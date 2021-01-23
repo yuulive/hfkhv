@@ -31,7 +31,7 @@ pgfine create
 ## Making changes to database
 
 - Apply any changes to database schema objects in `./pgfine/**/*.sql`.
-- Create new file in `./pgfine/migrations` if tables were modified.
+- Create new file in `./pgfine/migrations` if tables were created or modified.
 - Setup environment and run 
 ```bash
 source env-local-db-0.sh
@@ -58,9 +58,14 @@ pgfine migrate
 - Applies new scripts in `./pgfine/migrations/` and updates version in `pgfine` table.
 - Scans all objects in `./pgfine/` and builds the dependency tree.
 - Calculates hash of each object script file.
-- Attempts to update each object whose script hash does not match the one in the `pgfine` table.
+- Attempts to update each object whose script hash does not match the one in the `pgfine` table (or drop the object if it was deleted).
 - Updates `pgfine` table with newest hashes.
 
+## `pgfine destroy --no-joke`
+
+- Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
+- Attempts to drop each object defined in the project
+- Drop `pgfine` table
 
 
 # Structure
@@ -102,4 +107,6 @@ should return single json object:
 
 # Plan
 
-- [ ] choose rust 
+- [ ] implement `pgfine destroy --no-joke`
+- [ ] implement `pgfine create`
+- [ ] implement `pgfine migrate`
