@@ -3,13 +3,13 @@
 # Environment variables
 
 - `PGFINE_CONNECTION_STRING` credentials for altering target db
-- `PGFINE_SUPER_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres)
+- `PGFINE_SUPER_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres) refereced above.
 - `PGFINE_DIR` defaults to `./pgfine`
 
 
 # Workflow
 
-## Create new database project
+## Create new project
 
 - Choose version controlled directory.
 - Create git-ignored `env-local-db-0.sh` (as an example) file like this:
@@ -19,6 +19,11 @@ export PGFINE_CONNECTION_STRING="..."
 export PGFINE_SUPER_CONNECTION_STRING="..."
 # export PGFINE_DIR="./pgfine"
 ```
+- Run `pgfine init`
+
+
+## Create new database
+
 
 - Setup environment and run:
 
@@ -42,11 +47,18 @@ pgfine migrate
 - Commit all files to version control.
 
 
+Table constraints should be stored along with tables. You will have a problem if constraints form circular dependencies.
+
 # Commands
+
+## `pgfine init [./pgfine]`
+
+- Initializes empty project with empty directories and empty `./pgfine/create.sql` script.
+  
 
 ## `pgfine create`
 
-- Uses `PGFINE_SUPER_CONNECTION_STRING` to create a new database.
+- Uses `PGFINE_SUPER_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create.sql` script.
 - Everything else is done using `PGFINE_CONNECTION_STRING` credentials.
 - All database schema objects are created using script files.
 - `pgfine` table is created in default schema with latest version number and object hashes.
@@ -61,6 +73,7 @@ pgfine migrate
 - Attempts to update each object whose script hash does not match the one in the `pgfine` table (or drop the object if it was deleted).
 - Updates `pgfine` table with newest hashes.
 
+
 ## `pgfine destroy --no-joke`
 
 - Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
@@ -71,6 +84,7 @@ pgfine migrate
 # Structure
 
 ## Files
+- `./pgfine/create.sql`
 - `./pgfine/tables/`
 - `./pgfine/views/`
 - `./pgfine/functions/`
@@ -107,6 +121,10 @@ should return single json object:
 
 # Plan
 
+- [ ] implement `pgfine init`
 - [ ] implement `pgfine destroy --no-joke`
 - [ ] implement `pgfine create`
 - [ ] implement `pgfine migrate`
+- [ ] support for circular constraints (by adding `./pgfine/constraints`)
+- [ ] publish to crates.io
+
