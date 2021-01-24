@@ -9,6 +9,14 @@
 
 # Workflow
 
+## Install `pgfine`
+
+`pgfine` is not yet published at crates.io so you should install it from git repository:
+```bash
+git clone https://gitlab.com/mrsk/pgfine
+cargo install --path ./pgfine
+```
+
 ## Create new project
 
 - Choose version controlled directory.
