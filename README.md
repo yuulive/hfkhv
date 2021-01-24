@@ -134,5 +134,6 @@ should return single json object:
 - [ ] implement `pgfine create`
 - [ ] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
+- [ ] support for initial data
 - [ ] publish to crates.io
 
