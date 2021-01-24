@@ -21,25 +21,30 @@ fn main() -> anyhow::Result<()> {
         .about("deletes all defined database objects")
         .arg(clap::Arg::new("no-joke") // wtf
             .long("no-joke")
+            .about("confirmation")))
+    .subcommand(clap::App::new("drop")
+        .about("drop entire database")
+        .arg(clap::Arg::new("no-joke") // wtf
+            .long("no-joke")
             .about("confirmation")));
 
     let matches = clap.clone().get_matches();
-
-    // more program logic goes here...
-
     
     match matches.subcommand() {
         Some(("init", subcommand_matches)) => { 
             subcommand_init(subcommand_matches)?;
         },
-        Some(("create", _subcommand_matches)) => { 
-            println!("not implemented");
+        Some(("create", subcommand_matches)) => { 
+            subcommand_create(subcommand_matches)?;
         },
         Some(("migrate", _subcommand_matches)) => { 
-            println!("not implemented");
+            bail!("not implemented");
         },
         Some(("truncate", subcommand_matches)) => { 
-            subcommand_truncate(subcommand_matches);
+            subcommand_truncate(subcommand_matches)?;
+        },
+        Some(("drop", subcommand_matches)) => { 
+            subcommand_drop(subcommand_matches)?;
         },
         _ => {
             clap.print_help()?
@@ -61,13 +66,22 @@ fn subcommand_create(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
     return Ok(());
 }
 
-fn subcommand_truncate(matches: &clap::ArgMatches) {
+fn subcommand_truncate(matches: &clap::ArgMatches) -> anyhow::Result<()> {
     if !matches.is_present("no-joke") {
         println!("Are you sure? Try with --no-joke argument");
+        return Ok(())
     } else {
-        println!("truncateing objects...");
-        panic!("not implemented");
+        println!("Deleting database objects...");
+        bail!("not implemented");
     }
 }
 
-
+fn subcommand_drop(matches: &clap::ArgMatches) -> anyhow::Result<()> {
+    if !matches.is_present("no-joke") {
+        println!("Are you sure? Try with --no-joke argument");
+    } else {
+        let database_project = project::load()?;
+        database::drop(database_project)?;
+    }
+    return Ok(());
+}

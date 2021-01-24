@@ -6,6 +6,7 @@
 - `PGFINE_SUPER_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres) refereced above.
 - `PGFINE_DIR` defaults to `./pgfine`
 
+Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
 
 # Workflow
 
@@ -67,7 +68,7 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine create`
 
-- Uses `PGFINE_SUPER_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create.sql` script.
+- Uses `PGFINE_SUPER_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts.
 - Everything else is done using `PGFINE_CONNECTION_STRING` credentials.
 - All database schema objects are created using script files.
 - `pgfine` table is created in default schema with latest version number and object hashes.
@@ -88,6 +89,12 @@ Table constraints should be stored along with tables. You will have a problem if
 - Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
 - Attempts to drop each object defined in the project
 - Drop `pgfine` table
+
+
+## `pgfine drop --no-joke`
+
+- Uses `PGFINE_SUPER_CONNECTION_STRING` credentials to connect to database.
+- Uses executes `/pgfine/drop/*.sql` scripts to drop database and role.
 
 
 # Structure
@@ -133,9 +140,11 @@ should return single json object:
 - [x] implement `pgfine init`
 - [ ] implement `pgfine truncate --no-joke`
 - [ ] implement `pgfine create`
+- [x] implement `pgfine drop`
 - [ ] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
 - [ ] support for initial data
 - [ ] support tls
+- [ ] default drop script to disconnect users
 - [ ] publish to crates.io
 
