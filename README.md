@@ -28,11 +28,12 @@ export PGFINE_SUPER_CONNECTION_STRING="..."
 # export PGFINE_DIR="./pgfine"
 ```
 - Run `pgfine init`
+- Modify newly created `./pgfine/create.sql` if needed.
 
 
 ## Create new database
 
-
+- Modify `./pgfine/create.sql` if needed.
 - Setup environment and run:
 
 ```bash
@@ -61,8 +62,8 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine init [./pgfine]`
 
-- Initializes empty project with empty directories and empty `./pgfine/create.sql` script.
-  
+- Initializes empty project with empty directories and `./pgfine/create.sql` example script.
+
 
 ## `pgfine create`
 
@@ -129,7 +130,7 @@ should return single json object:
 
 # Plan
 
-- [ ] implement `pgfine init`
+- [x] implement `pgfine init`
 - [ ] implement `pgfine destroy --no-joke`
 - [ ] implement `pgfine create`
 - [ ] implement `pgfine migrate`
