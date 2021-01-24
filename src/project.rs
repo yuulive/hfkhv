@@ -56,3 +56,13 @@ pub fn init(path_str: &str) -> anyhow::Result<()> {
     
     return Ok(());
 }
+
+
+
+pub struct DatabaseProject {
+
+}
+
+pub fn load() -> anyhow::Result<DatabaseProject> {
+    return Ok(DatabaseProject{});
+}

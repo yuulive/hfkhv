@@ -83,7 +83,7 @@ Table constraints should be stored along with tables. You will have a problem if
 - Updates `pgfine` table with newest hashes.
 
 
-## `pgfine destroy --no-joke`
+## `pgfine truncate --no-joke`
 
 - Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
 - Attempts to drop each object defined in the project
@@ -131,10 +131,11 @@ should return single json object:
 # Plan
 
 - [x] implement `pgfine init`
-- [ ] implement `pgfine destroy --no-joke`
+- [ ] implement `pgfine truncate --no-joke`
 - [ ] implement `pgfine create`
 - [ ] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
 - [ ] support for initial data
+- [ ] support tls
 - [ ] publish to crates.io
 

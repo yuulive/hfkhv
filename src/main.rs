@@ -1,7 +1,9 @@
 #[macro_use] extern crate anyhow;
 extern crate postgres;
 use clap;
-mod project;
+pub mod project;
+pub mod database;
+
 
 fn main() -> anyhow::Result<()> {
 
@@ -15,7 +17,7 @@ fn main() -> anyhow::Result<()> {
         .about("creates fresh database"))
     .subcommand(clap::App::new("migrate")
         .about("updates database"))
-    .subcommand(clap::App::new("destroy")
+    .subcommand(clap::App::new("truncate")
         .about("deletes all defined database objects")
         .arg(clap::Arg::new("no-joke") // wtf
             .long("no-joke")
@@ -36,8 +38,8 @@ fn main() -> anyhow::Result<()> {
         Some(("migrate", _subcommand_matches)) => { 
             println!("not implemented");
         },
-        Some(("destroy", subcommand_matches)) => { 
-            subcommand_destroy(subcommand_matches);
+        Some(("truncate", subcommand_matches)) => { 
+            subcommand_truncate(subcommand_matches);
         },
         _ => {
             clap.print_help()?
@@ -49,15 +51,21 @@ fn main() -> anyhow::Result<()> {
 
 
 fn subcommand_init(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
-    return project::init("./pgfine");
+    project::init("./pgfine")?;
+    return Ok(());
 }
 
+fn subcommand_create(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
+    let database_project = project::load()?;
+    database::create(database_project)?;
+    return Ok(());
+}
 
-fn subcommand_destroy(matches: &clap::ArgMatches) {
+fn subcommand_truncate(matches: &clap::ArgMatches) {
     if !matches.is_present("no-joke") {
         println!("Are you sure? Try with --no-joke argument");
     } else {
-        println!("destroying objects...");
+        println!("truncateing objects...");
         panic!("not implemented");
     }
 }
