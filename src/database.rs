@@ -1,19 +1,14 @@
 
 
-use std::env;
 use anyhow;
-use anyhow::Context;
 use postgres;
 use crate::project::DatabaseProject;
+use crate::utils;
 
 
-fn read_env_var(key: &str) -> anyhow::Result<String> {
-    let result = env::var(key).with_context(|| format!("failed to read env variable: {:?}", key))?;
-    return Ok(result);
-}
 
 fn get_super_pg_client() -> anyhow::Result<postgres::Client> {
-    let super_connection_string = read_env_var("PGFINE_SUPER_CONNECTION_STRING")?;
+    let super_connection_string = utils::read_env_var("PGFINE_SUPER_CONNECTION_STRING")?;
     
     // FIXME match tlsMode
     let pg_client = postgres::Client::connect(&super_connection_string, postgres::NoTls)?;

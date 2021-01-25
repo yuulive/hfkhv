@@ -84,13 +84,6 @@ Table constraints should be stored along with tables. You will have a problem if
 - Updates `pgfine` table with newest hashes.
 
 
-## `pgfine truncate --no-joke`
-
-- Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
-- Attempts to drop each object defined in the project
-- Drop `pgfine` table
-
-
 ## `pgfine drop --no-joke`
 
 - Uses `PGFINE_SUPER_CONNECTION_STRING` credentials to connect to database.
@@ -138,7 +131,6 @@ should return single json object:
 # Plan
 
 - [x] implement `pgfine init`
-- [ ] implement `pgfine truncate --no-joke`
 - [ ] implement `pgfine create`
 - [x] implement `pgfine drop`
 - [ ] implement `pgfine migrate`

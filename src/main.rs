@@ -3,12 +3,13 @@ extern crate postgres;
 use clap;
 pub mod project;
 pub mod database;
+pub mod utils;
 
 
 fn main() -> anyhow::Result<()> {
 
     let mut clap: clap::App = clap::App::new("pgfine")
-    .version("0.1.0")
+    .version(clap::crate_version!())
     .author("Marius Kavaliauskas <mariuskava@gmail.com>")
     .about("Yet another database migration tool for postgres.")
     .subcommand(clap::App::new("init")
@@ -17,11 +18,6 @@ fn main() -> anyhow::Result<()> {
         .about("creates fresh database"))
     .subcommand(clap::App::new("migrate")
         .about("updates database"))
-    .subcommand(clap::App::new("truncate")
-        .about("deletes all defined database objects")
-        .arg(clap::Arg::new("no-joke") // wtf
-            .long("no-joke")
-            .about("confirmation")))
     .subcommand(clap::App::new("drop")
         .about("drop entire database")
         .arg(clap::Arg::new("no-joke") // wtf
@@ -39,9 +35,6 @@ fn main() -> anyhow::Result<()> {
         },
         Some(("migrate", _subcommand_matches)) => { 
             bail!("not implemented");
-        },
-        Some(("truncate", subcommand_matches)) => { 
-            subcommand_truncate(subcommand_matches)?;
         },
         Some(("drop", subcommand_matches)) => { 
             subcommand_drop(subcommand_matches)?;
@@ -64,16 +57,6 @@ fn subcommand_create(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
     let database_project = project::load()?;
     database::create(database_project)?;
     return Ok(());
-}
-
-fn subcommand_truncate(matches: &clap::ArgMatches) -> anyhow::Result<()> {
-    if !matches.is_present("no-joke") {
-        println!("Are you sure? Try with --no-joke argument");
-        return Ok(())
-    } else {
-        println!("Deleting database objects...");
-        bail!("not implemented");
-    }
 }
 
 fn subcommand_drop(matches: &clap::ArgMatches) -> anyhow::Result<()> {
