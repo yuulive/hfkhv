@@ -3,7 +3,7 @@
 # Environment variables
 
 - `PGFINE_CONNECTION_STRING` credentials for altering target db
-- `PGFINE_SUPER_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres) refereced above.
+- `PGFINE_ADMIN_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres) refereced above.
 - `PGFINE_DIR` defaults to `./pgfine`
 
 Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
@@ -25,7 +25,7 @@ cargo install --path ./pgfine
 
 ```bash
 export PGFINE_CONNECTION_STRING="..."
-export PGFINE_SUPER_CONNECTION_STRING="..."
+export PGFINE_ADMIN_CONNECTION_STRING="..."
 # export PGFINE_DIR="./pgfine"
 ```
 - Run `pgfine init`
@@ -68,10 +68,10 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine create`
 
-- Uses `PGFINE_SUPER_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts.
+- Uses `PGFINE_ADMIN_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts.
 - Everything else is done using `PGFINE_CONNECTION_STRING` credentials.
 - All database schema objects are created using script files.
-- `pgfine` table is created in default schema with latest version number and object hashes.
+- `pgfine_objects` and `pgfine_migrations` tabls are created in default schema with the last migration_id and object hashes.
 
 
 ## `pgfine migrate`
@@ -86,37 +86,29 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine drop --no-joke`
 
-- Uses `PGFINE_SUPER_CONNECTION_STRING` credentials to connect to database.
+- Uses `PGFINE_ADMIN_CONNECTION_STRING` credentials to connect to database.
 - Uses executes `/pgfine/drop/*.sql` scripts to drop database and role.
 
 
 # Structure
 
 ## Files
-- `./pgfine/create.sql`
+- `./pgfine/create/`
+- `./pgfine/drop/`
 - `./pgfine/tables/`
 - `./pgfine/views/`
 - `./pgfine/functions/`
 - `./pgfine/roles/`
 - `./pgfine/migrations/`
 
-## `pgfine` table
+## `pgfine_objects` table
 
-```sql
-select * from pgfine;
-```
+Contains a list of managed pgfine objects and their hashes.
 
-should return single json object:
+## `pgfine_migrations` table
 
-```json
-{
-    "version": "000123",
-    "object_md5": {
-        "public.todo_item": "123_md5",
-        "public.user": "234_md5"
-    },
-}
-```
+Contains a list of executed migrations. Selecting the max value should reveal the current state of database.
+
 
 ## Assumptions
 
@@ -127,11 +119,13 @@ should return single json object:
   - First we attempt `CREATE OR REPLACE`. If it fails and `--offline` flag is provided we do `DROP` and `CREATE` including all the dependencies.
 
 
+- does not support functions with same name different args.
+
 
 # Plan
 
 - [x] implement `pgfine init`
-- [ ] implement `pgfine create`
+- [x] implement `pgfine create`
 - [x] implement `pgfine drop`
 - [ ] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
@@ -139,4 +133,8 @@ should return single json object:
 - [ ] support tls
 - [ ] default drop script to disconnect users
 - [ ] publish to crates.io
+- [ ] example projects at `./example/`
+- [x] case insensitive
+- [ ] configurable search schemas
+- [x] search dependencies by matching whole word
 

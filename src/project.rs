@@ -4,117 +4,82 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use std::fs;
 use std::path;
+use std::convert::TryFrom;
 use path::PathBuf;
 use anyhow;
 use anyhow::Context;
-use postgres;
+use md5::Md5;
+use md5::Digest;
+use hex;
 use crate::utils;
+
 
 #[cfg(test)]
 mod tests;
 
 
-fn get_default_role_name() -> String {
-    let default_role_name = String::from("pgfine_role");
-    let connection_string_result = utils::read_env_var("PGFINE_CONNECTION_STRING");
-    match connection_string_result {
-        Ok(connection_string) => {
-            let pg_config_result = connection_string.parse::<postgres::Config>();
-            match pg_config_result {
-                Ok(pg_config) => {
-                    let user_result = pg_config.get_user();
-                    match user_result {
-                        Some(user_str) => {
-                            return user_str.into();
-                        },
-                        None => {
-                            return default_role_name;
-                        }
-                    }
-                },
-                Err(_) => {
-                    return default_role_name;
-                }
-            };
-        },
-        Err(_) => {
-            return default_role_name;
-        }
-    };
-}
-
-fn get_default_database_name() -> String {
-    let default_database_name = String::from("pgfine_database");
-    let connection_string_result = utils::read_env_var("PGFINE_CONNECTION_STRING");
-    match connection_string_result {
-        Ok(connection_string) => {
-            let pg_config_result = connection_string.parse::<postgres::Config>();
-            match pg_config_result {
-                Ok(pg_config) => {
-                    let dbname_result = pg_config.get_dbname();
-                    match dbname_result {
-                        Some(dbname) => {
-                            return dbname.into();
-                        },
-                        None => {
-                            return default_database_name;
-                        }
-                    }
-                },
-                Err(_) => {
-                    return default_database_name;
-                }
-            };
-        },
-        Err(_) => {
-            return default_database_name;
-        }
-    };
-}
 
 fn get_create_script_00() -> (String, String) {
-    let role_name = get_default_role_name();
     let filename = String::from("00-create-role.sql");
-    let content = format!("\n\
-        CREATE ROLE \"{role_name}\";\n\
-        ", role_name=role_name
-    );
+    let content = "
+-- available parameters for substitution {param}:
+-- -- database_name
+-- -- role_name
+-- -- password
+-- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are validated to contain only alphanum cahracters and underscore
+CREATE ROLE \"{role_name}\" WITH LOGIN PASSWORD '{password}'
+".into();
     return (filename, content);
 }
 
 fn get_create_script_01() -> (String, String) {
-    let database_name = get_default_database_name();
-    let role_name = get_default_role_name();
     let filename = String::from("01-create-database.sql");
-    let content = format!("\n\
-        CREATE DATABASE \"{database_name}\"\n\
-        WITH\n\
-        OWNER = {role_name}\n\
-        TEMPLATE = template0\n\
-        ENCODING = 'UTF8'\n\
-        LC_COLLATE = 'en_US.UTF-8'\n\
-        LC_CTYPE = 'en_US.UTF-8'\n\
-        TABLESPACE = pg_default\n\
-        CONNECTION LIMIT = 10;\n\
-    ", role_name=role_name, database_name=database_name);
+    let content = "
+-- available parameters for substitution {param}:
+-- -- database_name
+-- -- role_name
+-- -- password
+-- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are validated to contain only alphanum cahracters and underscore
+CREATE DATABASE \"{database_name}\"
+WITH
+OWNER = \"{role_name}\"
+TEMPLATE = template0
+ENCODING = 'UTF8'
+LC_COLLATE = 'en_US.UTF-8'
+LC_CTYPE = 'en_US.UTF-8'
+TABLESPACE = pg_default
+CONNECTION LIMIT = 10;
+".into();
     return (filename, content);
 }
 
 fn get_drop_script_00() -> (String, String) {
-    let database_name = get_default_database_name();
     let filename = String::from("00-drop-database.sql");
-    let content = format!("\n\
-        DROP DATABASE IF EXISTS \"{database_name}\";\n\
-    ", database_name=database_name);
+    let content = "
+-- available parameters for substitution {param}:
+-- -- database_name
+-- -- role_name
+-- -- password
+-- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are validated to contain only alphanum cahracters and underscore
+DROP DATABASE IF EXISTS \"{database_name}\" WITH (FORCE);
+".into();
     return (filename, content);
 }
 
 fn get_drop_script_01() -> (String, String) {
-    let role_name = get_default_role_name();
     let filename = String::from("01-drop-role.sql");
-    let content = format!("\n\
-        DROP ROLE IF EXISTS \"{role_name}\";\n\
-    ", role_name=role_name);
+    let content = "
+-- available parameters for substitution {param}:
+-- -- database_name
+-- -- role_name
+-- -- password
+-- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are validated to contain only alphanum cahracters and underscore
+DROP ROLE IF EXISTS \"{role_name}\";
+".into();
     return (filename, content);
 }
 
@@ -164,11 +129,29 @@ pub fn init(path_str: &str) -> anyhow::Result<()> {
 }
 
 fn object_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
+    
     let filestem = path_buf.file_stem()
         .ok_or(anyhow!("object_id_from_path error: could not parse filename {:?}", path_buf))?;
     let filestem_str = filestem.to_str()
         .ok_or(anyhow!("object_id_from_path error: could not parse filename {:?}", path_buf))?;
+
+    
+
+    let parts: Vec<&str> = filestem_str.split('.').collect();
+    if parts.len() != 2 {
+        bail!("Database object filename must contain schema and name separated by '.'. {:?}", path_buf)
+    }
+
     return Ok(filestem_str.into());
+}
+
+fn migration_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
+    let filename = path_buf.file_name()
+        .ok_or(anyhow!("migration_id_from_path error: could not parse filename {:?}", path_buf))?;
+    let filename_str = filename.to_str()
+        .ok_or(anyhow!("migration_id_from_path error: could not parse filename {:?}", path_buf))?;
+
+    return Ok(filename_str.into());
 }
 
 
@@ -211,14 +194,26 @@ fn load_objects_info(path_str: &str) -> anyhow::Result<HashMap<String, (Database
 
 fn calc_required_by_for_object(
     object_id: &str, 
-    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>
+    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
+    search_schemas: &HashSet<String>
 ) -> HashSet<String> {
     let mut result = HashSet::new();
+    let id_parts: Vec<&str> = object_id.split('.').collect();
+    let schema: &str = id_parts[0].into();
+    let name: &str = id_parts[1].into();
+    let search_term;
+    if search_schemas.contains(schema) {
+        search_term = name;
+    } else {
+        search_term = object_id;
+    }
+
     for (required_by_object_id, (_, _, script)) in objects_info {
         if object_id == required_by_object_id {
             continue;
         }
-        if script.contains(object_id) {
+        let contains = utils::contains_whole_word_ci(&script, &search_term);
+        if contains {
             result.insert(required_by_object_id.clone());
         }
     }
@@ -226,11 +221,12 @@ fn calc_required_by_for_object(
 }
 
 fn calc_required_by(
-    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>
+    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
+    search_schemas: &HashSet<String>
 ) -> HashMap<String, HashSet<String>> {
     let mut result = HashMap::new();
     for (object_id, _) in objects_info {
-        let required_by = calc_required_by_for_object(object_id, objects_info);
+        let required_by = calc_required_by_for_object(object_id, objects_info, &search_schemas);
         result.insert(object_id.clone(), required_by);
     }
     return result;
@@ -262,23 +258,33 @@ fn build_database_objects(
     mut objects_info: HashMap<String, (DatabaseObjectType, PathBuf, String)>,
     mut required_by: HashMap<String, HashSet<String>>,
     mut depends_on: HashMap<String, HashSet<String>>
-) -> HashMap<String, DatabaseObject> {
+) -> anyhow::Result<HashMap<String, DatabaseObject>> {
     let mut result = HashMap::new();
+    let mut hasher = Md5::new();
     for (object_id, (object_type, path_buf, script)) in objects_info.drain() {
         let object_depends_on = depends_on.remove(&object_id).expect("depends_on.remove(&object_id)");
         let object_required_by = required_by.remove(&object_id).expect("required_by.remove(&object_id)");
+        let id = object_id.clone();
+        let id_parts: Vec<&str> = id.split('.').collect();
+        let schema: String = id_parts[0].into();
+        let name: String = id_parts[1].into();
+        hasher.update(&script);
+        let hash = hasher.finalize_reset();
+        let hash_str = hex::encode(hash);
         let o = DatabaseObject {
             object_type: object_type,
-            id: object_id.clone(),
+            id,
+            schema,
+            name,
             path_buf: path_buf,
             script: script,
-            md5: "asd".into(),
+            md5: hash_str,
             depends_on: object_depends_on,
             required_by: object_required_by,
         };
         result.insert(object_id, o);
     }
-    return result;
+    return Ok(result);
 }
 
 fn resolve_dependencies(
@@ -336,17 +342,42 @@ fn calc_execute_order(objects: &HashMap<String, DatabaseObject>) -> anyhow::Resu
     return Ok(dependencies_vec);
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum DatabaseObjectType {
     Table,
     View,
     Function,
 }
 
+impl From<DatabaseObjectType> for String {
+    fn from(t: DatabaseObjectType) -> Self {
+        match t {
+            DatabaseObjectType::Table => "table".into(),
+            DatabaseObjectType::View => "view".into(),
+            DatabaseObjectType::Function => "function".into()
+        }
+    }
+}
+
+impl TryFrom<&str> for DatabaseObjectType {
+    type Error = anyhow::Error;
+    fn try_from(t: &str) -> Result<Self, Self::Error> {
+        let object_type = match t {
+            "table" => DatabaseObjectType::Table,
+            "view" => DatabaseObjectType::View,
+            "function" => DatabaseObjectType::Function,
+            _ => bail!("could not convert object type from {:?}", t),
+        };
+        return Ok(object_type);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DatabaseObject {
     pub object_type: DatabaseObjectType,
     pub id: String,
+    pub schema: String,
+    pub name: String,
     pub path_buf: PathBuf,
     pub script: String,
     pub md5: String,
@@ -355,10 +386,10 @@ pub struct DatabaseObject {
 }
 
 pub struct DatabaseProject {
-    //pub version: String,
     pub project_dirpath: PathBuf,
     pub create_scripts: Vec<(PathBuf, String)>,
     pub drop_scripts: Vec<(PathBuf, String)>,
+    pub migration_scripts: Vec<(String, String)>,
     pub objects: HashMap<String, DatabaseObject>,
     pub execute_order: Vec<String>,
 }
@@ -382,17 +413,30 @@ impl DatabaseProject {
             drop_scripts.push((p, script));
         }
 
+        let path_buf = path::Path::new(path_str).join("migrations");
+        let migration_script_paths = utils::list_files(&path_buf)?;
+        let mut migration_scripts = vec![];
+        for p in migration_script_paths {
+            let script = utils::read_file(&p)?;
+            let migration_id = migration_id_from_path(&p)?;
+            migration_scripts.push((migration_id, script));
+        }
+        
+        // FIXME configurable search schemas???
+        let mut search_schemas: HashSet<String> = HashSet::new();
+        search_schemas.insert("public".into());
 
         let objects_info = load_objects_info(&path_str)?;
-        let required_by = calc_required_by(&objects_info);
+        let required_by = calc_required_by(&objects_info, &search_schemas);
         let depends_on = calc_depends_on(&required_by);
-        let objects = build_database_objects(objects_info, required_by, depends_on);
+        let objects = build_database_objects(objects_info, required_by, depends_on)?;
         let execute_order= calc_execute_order(&objects)?;
 
         return Ok(DatabaseProject {
             project_dirpath: path_buf,
             create_scripts,
             drop_scripts,
+            migration_scripts,
             objects,
             execute_order,
         });
