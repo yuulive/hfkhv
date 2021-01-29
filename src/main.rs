@@ -16,8 +16,6 @@ fn main() -> anyhow::Result<()> {
     .about("Yet another database migration tool for postgres.")
     .subcommand(clap::App::new("init")
         .about("initializes new pgfine project"))
-    .subcommand(clap::App::new("create")
-        .about("creates fresh database"))
     .subcommand(clap::App::new("migrate")
         .about("updates database"))
     .subcommand(clap::App::new("drop")
@@ -32,11 +30,8 @@ fn main() -> anyhow::Result<()> {
         Some(("init", subcommand_matches)) => { 
             subcommand_init(subcommand_matches)?;
         },
-        Some(("create", subcommand_matches)) => { 
-            subcommand_create(subcommand_matches)?;
-        },
-        Some(("migrate", _subcommand_matches)) => { 
-            bail!("not implemented");
+        Some(("migrate", subcommand_matches)) => { 
+            subcommand_migrate(subcommand_matches)?;
         },
         Some(("drop", subcommand_matches)) => { 
             subcommand_drop(subcommand_matches)?;
@@ -55,9 +50,9 @@ fn subcommand_init(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
     return Ok(());
 }
 
-fn subcommand_create(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
+fn subcommand_migrate(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
     let database_project = project::load()?;
-    database::create(database_project)?;
+    database::migrate(database_project)?;
     return Ok(());
 }
 

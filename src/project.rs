@@ -440,9 +440,19 @@ impl DatabaseProject {
             objects,
             execute_order,
         });
+    }
 
+    pub fn get_next_migration(&self, migration_id: &str) -> Option<(String, String)> {
+        let migration_id = String::from(migration_id);
+        for (next_migration_id, next_migration_script) in self.migration_scripts.iter() {
+            if *next_migration_id > migration_id {
+                return Some((next_migration_id.clone(), next_migration_script.clone()));
+            }
+        }
+        return None;
     }
 }
+
 
 pub fn load() -> anyhow::Result<DatabaseProject> {
     let database_project = DatabaseProject::from_path("./pgfine")?;

@@ -32,22 +32,24 @@ export PGFINE_ADMIN_CONNECTION_STRING="..."
 - Modify newly created `./pgfine/create.sql` if needed.
 
 
-## Create new database
+## Create a database
 
-- Modify `./pgfine/create.sql` if needed.
+- Modify `./pgfine/create/*` scripts if needed.
 - Setup environment and run:
 
 ```bash
 source env-local-db-0.sh
-pgfine create
+pgfine migrate
 ```
 
 
 ## Making changes to database
 
 - Apply any changes to database schema objects in `./pgfine/**/*.sql`.
-- Create new file in `./pgfine/migrations` if tables were created or modified.
-- Setup environment and run 
+- All the chagnes related with tables should be implemented via `./pgfine/migrations/*` scripts.
+- For all other objects (not tables) it is enough to modify a related create script. (ex. `./pgfine/views/public.view0.sql`)
+- Filenames for database objects must be of format `<schema>.<name>.sql`.
+- Setup environment and run
 ```bash
 source env-local-db-0.sh
 pgfine migrate
@@ -68,7 +70,7 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine create`
 
-- Uses `PGFINE_ADMIN_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts.
+
 - Everything else is done using `PGFINE_CONNECTION_STRING` credentials.
 - All database schema objects are created using script files.
 - `pgfine_objects` and `pgfine_migrations` tabls are created in default schema with the last migration_id and object hashes.
@@ -76,12 +78,14 @@ Table constraints should be stored along with tables. You will have a problem if
 
 ## `pgfine migrate`
 
-- Uses `PGFINE_CONNECTION_STRING` credentials to connect to database.
-- Applies new scripts in `./pgfine/migrations/` and updates version in `pgfine` table.
+- Uses `PGFINE_ADMIN_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts (if they do not exist).
+- Uses `PGFINE_CONNECTION_STRING` credentials to connect to a working database.
+- Applies new scripts in `./pgfine/migrations/` and updates version in `pgfine` table. (This is skipped if the database is newly created).
 - Scans all objects in `./pgfine/` and builds the dependency tree.
 - Calculates hash of each object script file.
 - Attempts to update each object whose script hash does not match the one in the `pgfine` table (or drop the object if it was deleted).
-- Updates `pgfine` table with newest hashes.
+- Updates `pgfine_objects` table with newest information.
+- Inserts into `pgfine_migrations` executed migration scripts.
 
 
 ## `pgfine drop --no-joke`
@@ -120,7 +124,7 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 
 
 - does not support functions with same name different args.
-
+- empty string is the name of the first migration
 
 # Plan
 
@@ -137,4 +141,7 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 - [x] case insensitive
 - [ ] configurable search schemas
 - [x] search dependencies by matching whole word
+- [ ] make execute order deterministic
+- [ ] operations in single transaction if possible
+- [ ] make README.md readable
 

@@ -263,19 +263,12 @@ fn create_database(
     admin_pg_client: &mut postgres::Client,
     database_project: &DatabaseProject
 ) -> anyhow::Result<()> {
-
-    if exists_database(admin_pg_client)? {
-        println!("create_database: database already exists");
-        return Ok(());
-    }
-
     for (path_buf, script) in database_project.create_scripts.iter() {
         println!("create_database: executing {:?}", path_buf);
         let prepared_script = prepare_admin_script(&script)?;
         admin_pg_client.batch_execute(&prepared_script)
             .with_context(|| format!("create error: failed to execute script: {:?}", path_buf))?;
     }
-
     println!("create_database: fresh database created");
     return Ok(());
 }
@@ -311,6 +304,7 @@ fn update_objects(
         update_object_with_deps(pg_client, &object, &database_project.objects)
             .with_context(|| format!("update_objects error: {:?}", object))?;
     }
+    drop_missing_objects(pg_client, &database_project)?;
     return Ok(());
 }
 
@@ -362,24 +356,74 @@ fn drop_missing_objects(
 }
 
 
-
-pub fn create(database_project: DatabaseProject) -> anyhow::Result<()> {
-    let mut admin_pg_client = get_admin_pg_client()?;
-    create_database(&mut admin_pg_client, &database_project)?;
-
-    let mut pg_client = get_pg_client()?;
-    create_pgfine_tables(&mut pg_client)?;
-    update_objects(&mut pg_client, &database_project)?;
-    drop_missing_objects(&mut pg_client, &database_project)?;
-
-    let last_migration = database_project.migration_scripts.last();
-    if let Some((migration, _)) = last_migration {
-        insert_pgfine_migration(&mut pg_client, &migration)?;
-    }
-
-    return Ok(());
+fn get_db_last_migration(pg_client: &mut postgres::Client) -> anyhow::Result<Option<String>> {
+    let sql = "select max(migration_id) from pgfine_migrations;";
+    let row = pg_client.query_one(sql, &[])?;
+    let result = row.try_get(0)?;
+    return Ok(result);
 }
 
+
+pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
+
+    let project_last_migration_opt = database_project.migration_scripts.last();
+    let pg_client_result = get_pg_client();
+    
+    match pg_client_result {
+        Err(_) => {
+            let mut admin_pg_client = get_admin_pg_client()
+                .context("could not connect to database neither using PGFINE_CONNECTION_STRING nor PGFINE_ADMIN_CONNECTION_STRING")?;
+
+            if exists_database(&mut admin_pg_client)? {
+                bail!("database exists but could not get connection to it, check PGFINE_CONNECTION_STRING");
+            }
+
+            create_database(&mut admin_pg_client, &database_project)?;
+
+            let mut pg_client = get_pg_client()?;
+            create_pgfine_tables(&mut pg_client)?;
+            update_objects(&mut pg_client, &database_project)?;
+
+            if let Some((project_last_migration, _)) = project_last_migration_opt {
+                insert_pgfine_migration(&mut pg_client, &project_last_migration)?;
+            } else {
+                insert_pgfine_migration(&mut pg_client, "")?;
+            }
+        },
+        Ok(mut pg_client) => {
+            let db_last_migration_opt = get_db_last_migration(&mut pg_client)?;
+            match db_last_migration_opt {
+                Some(db_last_migration) => {
+                    let mut db_last_migration_current = db_last_migration;
+                    loop {
+                        if let Some((next_migration_id, next_migration_script)) 
+                            = database_project.get_next_migration(&db_last_migration_current
+                        ) {
+                            pg_client.batch_execute(&next_migration_script)?;
+                            insert_pgfine_migration(&mut pg_client, &next_migration_id)?; // should go in single tansaction
+                            db_last_migration_current = get_db_last_migration(&mut pg_client)?.unwrap();
+                        } else {
+                            break;
+                        }
+                    }
+                    update_objects(&mut pg_client, &database_project)?;
+                },
+                None => {
+                    // assumes manually created empty database
+                    create_pgfine_tables(&mut pg_client)?;
+                    update_objects(&mut pg_client, &database_project)?;
+
+                    if let Some((project_last_migration, _)) = project_last_migration_opt {
+                        insert_pgfine_migration(&mut pg_client, &project_last_migration)?;
+                    } else {
+                        insert_pgfine_migration(&mut pg_client, "")?;
+                    }
+                }
+            }
+        }
+    }
+    return Ok(());
+}
 
 
 pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
