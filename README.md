@@ -129,13 +129,12 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 # Plan
 
 - [x] implement `pgfine init`
-- [x] implement `pgfine create`
 - [x] implement `pgfine drop`
-- [ ] implement `pgfine migrate`
+- [x] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
 - [ ] support for initial data
 - [ ] support tls
-- [ ] default drop script to disconnect users
+- [x] default drop script to disconnect users
 - [ ] publish to crates.io
 - [ ] example projects at `./example/`
 - [x] case insensitive
