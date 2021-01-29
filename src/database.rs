@@ -391,6 +391,7 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
             }
         },
         Ok(mut pg_client) => {
+            create_pgfine_tables(&mut pg_client)?;
             let db_last_migration_opt = get_db_last_migration(&mut pg_client)?;
             match db_last_migration_opt {
                 Some(db_last_migration) => {
@@ -410,7 +411,6 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
                 },
                 None => {
                     // assumes manually created empty database
-                    create_pgfine_tables(&mut pg_client)?;
                     update_objects(&mut pg_client, &database_project)?;
 
                     if let Some((project_last_migration, _)) = project_last_migration_opt {
