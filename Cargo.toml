@@ -4,6 +4,7 @@ description = "Yet another database migration tool for postgres."
 version = "0.1.0"
 authors = ["Marius Kavaliauskas <mariuskava@gmail.com>"]
 edition = "2018"
+license = "MIT"
 license-file = "LICENSE"
 keywords = ["pgfine", "postgres", "postgresql", "migration", "database"]
 repository = "https://gitlab.com/mrsk/pgfine"

@@ -1,26 +1,25 @@
 
 
-# Environment variables
 
-- `PGFINE_CONNECTION_STRING` credentials for altering target db
-- `PGFINE_ADMIN_CONNECTION_STRING` credentials for creating a new database (usually postgres db with user postgres) refereced above.
-- `PGFINE_DIR` defaults to `./pgfine`
 
-Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+# Install
 
-# Workflow
+## From `crates.io`
 
-## Install `pgfine`
+```bash
+cargo install pgfine
+```
 
-`pgfine` is not yet published at crates.io so you should install it from git repository:
+## From repository
+
 ```bash
 git clone https://gitlab.com/mrsk/pgfine
 cargo install --path ./pgfine
 ```
 
-## Create new project
+# Create new project
 
-- Choose version controlled directory.
+- Choose some version controlled directory.
 - Create git-ignored `env-local-db-0.sh` (as an example) file like this:
 
 ```bash
@@ -31,8 +30,16 @@ export PGFINE_ADMIN_CONNECTION_STRING="..."
 - Run `pgfine init`
 - Modify newly created `./pgfine/create.sql` if needed.
 
+## Environment variables
 
-## Create a database
+- `PGFINE_CONNECTION_STRING` credentials for altering target db
+- `PGFINE_ADMIN_CONNECTION_STRING` credentials for creating a new database  refereced above (usually postgres db with user postgres).
+- `PGFINE_DIR` defaults to `./pgfine`
+
+Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+
+
+# Create a database
 
 - Modify `./pgfine/create/*` scripts if needed.
 - Setup environment and run:
@@ -43,13 +50,13 @@ pgfine migrate
 ```
 
 
-## Making changes to database
+# Making changes to database
 
 - Apply any changes to database schema objects in `./pgfine/**/*.sql`.
 - All the chagnes related with tables should be implemented via `./pgfine/migrations/*` scripts.
-- For all other objects (not tables) it is enough to modify a related create script. (ex. `./pgfine/views/public.view0.sql`)
+- For all other objects (not tables) it is enough to modify a related create/alter script. (ex. `./pgfine/views/public.view0.sql`)
 - Filenames for database objects must be of format `<schema>.<name>.sql`.
-- Setup environment and run
+- Run
 ```bash
 source env-local-db-0.sh
 pgfine migrate
@@ -60,6 +67,62 @@ pgfine migrate
 
 
 Table constraints should be stored along with tables. You will have a problem if constraints form circular dependencies.
+
+# Rollbacks
+
+- Restore database object scripts from previous commits
+- Create a new migration script if rollback involves data.
+- Apply changes the same way: `pgfine migrate`.
+
+
+# Database objects
+
+Database objects are:
+- tables
+- views
+- indexes
+- constraints
+- functions
+- ...
+
+Each database object has coresponding create/alter script in pgfine project directory (see bellow for details). Filenames should consist of schema name and object name and `.sql` extension (example: `./pgfine/tables/public.some_table_0.sql`).
+
+Database object scripts are executed when `pgfine` attempts to create or alter database object; except for tables - `pgfine` won't attempt to alter or drop tables, these changes have to be implemented using migration scripts.
+
+Sometimes object needs to be dropped and created instead of updating it in place (one such case is when argument is removed from function definition). Drop script is generated using object id.
+
+
+## Tables
+
+Example `./pgfine/tables/public.table0.sql`:
+```sql
+create table table0 (
+    id bigserial primary key
+);
+
+-- create indexes
+-- create constraints
+-- create rules
+-- create triggers
+
+```
+
+## Views
+
+Example `./pgfine/views/public.view0.sql`:
+```sql
+-- it is recommended to include "or replace", otherwise it will be dropped and created again each time changes are made.
+create or replace view view0 as
+select t0.id
+from table0 t0
+join table1 t1 on t1.id = t0.id
+
+-- create indexes maybe
+```
+
+
+
+
 
 # Commands
 
@@ -126,21 +189,22 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 - does not support functions with same name different args.
 - empty string is the name of the first migration
 
-# Plan
+# Plan for 1.0.0
 
-- [x] implement `pgfine init`
-- [x] implement `pgfine drop`
-- [x] implement `pgfine migrate`
 - [ ] support for circular constraints (by adding `./pgfine/constraints`)
-- [ ] support for initial data
+- [ ] more types of database objects (triggers, rules?, indices.. ?)
 - [ ] support tls
-- [x] default drop script to disconnect users
-- [ ] publish to crates.io
 - [ ] example projects at `./example/`
-- [x] case insensitive
-- [ ] configurable search schemas
-- [x] search dependencies by matching whole word
-- [ ] make execute order deterministic
-- [ ] operations in single transaction if possible
+- [ ] ability to override dependencies in comment section when standard resolution fails
+- [ ] implement `PGFINE_DIR`
 - [ ] make README.md readable
+
+
+# Post 1.0.0 plan
+
+- [ ] operations in single transaction if possible
+- [ ] configurable search schemas
+- [ ] make execute order deterministic
+- [ ] support stable rust
+- [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 
