@@ -10,10 +10,10 @@ pub mod utils;
 
 fn main() -> anyhow::Result<()> {
 
-    let mut clap: clap::App = clap::App::new("pgfine")
+    let mut clap: clap::App = clap::App::new(clap::crate_name!())
     .version(clap::crate_version!())
-    .author("Marius Kavaliauskas <mariuskava@gmail.com>")
-    .about("Yet another database migration tool for postgres.")
+    .author(clap::crate_authors!("\n"))
+    .about(clap::crate_description!())
     .subcommand(clap::App::new("init")
         .about("initializes new pgfine project"))
     .subcommand(clap::App::new("migrate")
