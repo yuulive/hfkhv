@@ -17,7 +17,11 @@ use crate::utils;
 #[cfg(test)]
 mod tests;
 
-
+fn get_project_path() -> anyhow::Result<PathBuf> {
+    let project_path_str = utils::read_env_var("PGFINE_DIR")
+        .context("get_project_path error: failed to read env variable PGFINE_DIR")?;
+    return Ok(PathBuf::from(project_path_str));
+}
 
 fn get_create_script_00() -> (String, String) {
     let filename = String::from("00-create-role.sql");
@@ -83,44 +87,45 @@ DROP ROLE IF EXISTS \"{role_name}\";
     return (filename, content);
 }
 
-pub fn init(path_str: &str) -> anyhow::Result<()> {
-    println!("project::init({:?})", path_str);
-
-    let path_obj = path::Path::new(path_str);
-    if path_obj.exists() {
-        bail!("already exists: {:?}", path_str);
+pub fn init() -> anyhow::Result<()> {
+    
+    let project_path = get_project_path()?;
+    
+    if project_path.exists() {
+        println!("project directory already exists at {:?}", project_path);
+        return Ok(());
     }
 
-    fs::create_dir_all(path_obj)?;
-    fs::create_dir(path_obj.join("create"))?;
-    fs::create_dir(path_obj.join("drop"))?;
-    fs::create_dir(path_obj.join("tables"))?;
-    fs::create_dir(path_obj.join("views"))?;
-    fs::create_dir(path_obj.join("functions"))?;
-    fs::create_dir(path_obj.join("roles"))?;
-    fs::create_dir(path_obj.join("migrations"))?;
+    fs::create_dir_all(&project_path)?;
+    fs::create_dir(project_path.join("create"))?;
+    fs::create_dir(project_path.join("drop"))?;
+    fs::create_dir(project_path.join("tables"))?;
+    fs::create_dir(project_path.join("views"))?;
+    fs::create_dir(project_path.join("functions"))?;
+    fs::create_dir(project_path.join("roles"))?;
+    fs::create_dir(project_path.join("migrations"))?;
 
     {
         let (filename, content) = get_create_script_00();
-        let path_buf = path_obj.join("create").join(filename);
+        let path_buf = project_path.join("create").join(filename);
         utils::write_file(&path_buf, &content)?;
     }
 
     {
         let (filename, content) = get_create_script_01();
-        let path_buf = path_obj.join("create").join(filename);
+        let path_buf = project_path.join("create").join(filename);
         utils::write_file(&path_buf, &content)?;
     }
 
     {
         let (filename, content) = get_drop_script_00();
-        let path_buf = path_obj.join("drop").join(filename);
+        let path_buf = project_path.join("drop").join(filename);
         utils::write_file(&path_buf, &content)?;
     }
 
     {
         let (filename, content) = get_drop_script_01();
-        let path_buf = path_obj.join("drop").join(filename);
+        let path_buf = project_path.join("drop").join(filename);
         utils::write_file(&path_buf, &content)?;
     }
 
@@ -173,16 +178,16 @@ fn load_objects_info_by_type(
 }
 
 
-fn load_objects_info(path_str: &str) -> anyhow::Result<HashMap<String, (DatabaseObjectType, PathBuf, String)>> {
+fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (DatabaseObjectType, PathBuf, String)>> {
     let mut result = HashMap::new();
 
-    let path_buf = path::PathBuf::from(path_str).join("tables");
+    let path_buf = project_path.join("tables");
     load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Table)?;
 
-    let path_buf = path::PathBuf::from(path_str).join("views");
+    let path_buf = project_path.join("views");
     load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::View)?;
 
-    let path_buf = path::PathBuf::from(path_str).join("functions");
+    let path_buf = project_path.join("functions");
     load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Function)?;
 
     
@@ -395,9 +400,9 @@ pub struct DatabaseProject {
 }
 
 impl DatabaseProject {
-    fn from_path(path_str: &str) -> anyhow::Result<DatabaseProject> {
+    fn from_path(project_path: &PathBuf) -> anyhow::Result<DatabaseProject> {
 
-        let path_buf = path::Path::new(path_str).join("create");
+        let path_buf = project_path.join("create");
         let create_script_paths = utils::list_files(&path_buf)?;
         let mut create_scripts = vec![];
         for p in create_script_paths {
@@ -405,7 +410,7 @@ impl DatabaseProject {
             create_scripts.push((p, script));
         }
 
-        let path_buf = path::Path::new(path_str).join("drop");
+        let path_buf = project_path.join("drop");
         let drop_script_paths = utils::list_files(&path_buf)?;
         let mut drop_scripts = vec![];
         for p in drop_script_paths {
@@ -413,7 +418,7 @@ impl DatabaseProject {
             drop_scripts.push((p, script));
         }
 
-        let path_buf = path::Path::new(path_str).join("migrations");
+        let path_buf = project_path.join("migrations");
         let migration_script_paths = utils::list_files(&path_buf)?;
         let mut migration_scripts = vec![];
         for p in migration_script_paths {
@@ -426,7 +431,7 @@ impl DatabaseProject {
         let mut search_schemas: HashSet<String> = HashSet::new();
         search_schemas.insert("public".into());
 
-        let objects_info = load_objects_info(&path_str)?;
+        let objects_info = load_objects_info(&project_path)?;
         let required_by = calc_required_by(&objects_info, &search_schemas);
         let depends_on = calc_depends_on(&required_by);
         let objects = build_database_objects(objects_info, required_by, depends_on)?;
@@ -455,7 +460,8 @@ impl DatabaseProject {
 
 
 pub fn load() -> anyhow::Result<DatabaseProject> {
-    let database_project = DatabaseProject::from_path("./pgfine")?;
+    let project_path = get_project_path()?;
+    let database_project = DatabaseProject::from_path(&project_path)?;
     return Ok(database_project);
 }
 

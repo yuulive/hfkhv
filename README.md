@@ -25,16 +25,16 @@ cargo install --path ./pgfine
 ```bash
 export PGFINE_CONNECTION_STRING="..."
 export PGFINE_ADMIN_CONNECTION_STRING="..."
-# export PGFINE_DIR="./pgfine"
+export PGFINE_DIR="./pgfine"
 ```
 - Run `pgfine init`
-- Modify newly created `./pgfine/create.sql` if needed.
+- Modify newly created `./pgfine/create/*.sql` and `./pgfine/drop/*.sql` scripts if needed.
 
 ## Environment variables
 
 - `PGFINE_CONNECTION_STRING` credentials for altering target db
 - `PGFINE_ADMIN_CONNECTION_STRING` credentials for creating a new database  refereced above (usually postgres db with user postgres).
-- `PGFINE_DIR` defaults to `./pgfine`
+- `PGFINE_DIR` path pointing to pgfine project, a good choice would be `./pgfine`
 
 Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
 
@@ -196,7 +196,8 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 - [ ] support tls
 - [ ] example projects at `./example/`
 - [ ] ability to override dependencies in comment section when standard resolution fails
-- [ ] implement `PGFINE_DIR`
+- [x] implement `PGFINE_DIR`
+- [ ] ecplain errors better in `database::migrate`, `database::drop`, `project::init`
 - [ ] make README.md readable
 
 
@@ -207,4 +208,4 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 - [ ] make execute order deterministic
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
-
+- [ ] generate project from existing database

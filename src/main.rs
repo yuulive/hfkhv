@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
 
 
 fn subcommand_init(_matches: &clap::ArgMatches) -> anyhow::Result<()> {
-    project::init("./pgfine")?;
+    project::init()?;
     return Ok(());
 }
 
