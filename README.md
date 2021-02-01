@@ -126,29 +126,23 @@ join table1 t1 on t1.id = t0.id
 
 # Commands
 
-## `pgfine init [./pgfine]`
+## `pgfine init`
 
-- Initializes empty project with empty directories and `./pgfine/create.sql` example script.
-
-
-## `pgfine create`
-
-
-- Everything else is done using `PGFINE_CONNECTION_STRING` credentials.
-- All database schema objects are created using script files.
-- `pgfine_objects` and `pgfine_migrations` tabls are created in default schema with the last migration_id and object hashes.
+- Initializes empty project at path `PGFINE_DIR`.
 
 
 ## `pgfine migrate`
 
-- Uses `PGFINE_ADMIN_CONNECTION_STRING` to create a new database and role referenced in `PGFINE_CONNECTION_STRING` using `/pgfine/create/*.sql` scripts (if they do not exist).
-- Uses `PGFINE_CONNECTION_STRING` credentials to connect to a working database.
-- Applies new scripts in `./pgfine/migrations/` and updates version in `pgfine` table. (This is skipped if the database is newly created).
-- Scans all objects in `./pgfine/` and builds the dependency tree.
-- Calculates hash of each object script file.
-- Attempts to update each object whose script hash does not match the one in the `pgfine` table (or drop the object if it was deleted).
+### If database is missing:
+Creates an up to date fresh databaes using `PGFINE_ADMIN_CONNECTION_STRING` and skips all migration scripts
+
+### If database exists:
+
+- Uses `PGFINE_CONNECTION_STRING` credentials to connect to a target database.
+- Applies new scripts in `./pgfine/migrations/` and inserts executed scripts into `pgfine_migrations` table.
+- Scans all objects in pgfine project dir and calculates update order to satisfy dependency tree.
+- Attempts to update each object whose script hash does not match the one in the `pgfine_objects` table (or drop the object if it was deleted).
 - Updates `pgfine_objects` table with newest information.
-- Inserts into `pgfine_migrations` executed migration scripts.
 
 
 ## `pgfine drop --no-joke`
@@ -181,12 +175,8 @@ Contains a list of executed migrations. Selecting the max value should reveal th
 
 - Each script filename in `tables`, `views` and `functions` correspond to database object. This information is used to track dependencies between objects (using simple text match)
 - Each file in `./pgfine/migrations/` has format `<comparable_version_string>.*`
-- During each migration all views and functions which hashes do not match with `object_md5` will be updated. (online if possible)
-- Scripts are modified during `pgfine migrate` execution
-  - First we attempt `CREATE OR REPLACE`. If it fails and `--offline` flag is provided we do `DROP` and `CREATE` including all the dependencies.
-
-
-- does not support functions with same name different args.
+- During each migration all views and functions which hashes do not match with `object_md5` will be updated.
+- First we attempt to execute database_object script (which is usually `CREATE OR REPLACE`). If it fails we attempt to `DROP` (including dependencies if necesary) and `CREATE` a new version.
 - empty string is the name of the first migration
 
 # Plan for 1.0.0
