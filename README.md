@@ -77,7 +77,7 @@ Modify newly created `./pgfine/create/*.sql` and `./pgfine/drop/*.sql` scripts i
 pgfine migrate
 ```
 
-Two extra tables will be created additionaly to the tables defined in the pgfine project:
+Two extra tables will be created:
 
 - `pgfine_objects`: contains a list of managed pgfine objects and their hashes.
 - `pgfine_migrations`: Contains a list of executed migrations. Selecting the max value should reveal the current state of database. The first migration will be inserted as empty string.
@@ -98,7 +98,7 @@ pgfine migrate
 - Commit all files to version control.
 
 
-Table constraints should be stored along with tables. You will have a problem if constraints form circular dependencies.
+
 
 # Rollbacks
 
@@ -142,6 +142,11 @@ create table table0 (
 
 ```
 
+Table constraints and indeces can be stored along with tables. But to modify them you will have to write migration scripts.
+
+If you have circular foreign key dependencies you should define those constraints in a separate `./pgfine/constraints/` files to break the cycle.
+
+
 ## Views
 
 Example `./pgfine/views/public.view0.sql`:
@@ -157,7 +162,7 @@ join table1 t1 on t1.id = t0.id
 
 ## Constraints
 
-In the constraint identifier the schema part should represent the schema of associated table. (Constraints do not dirrectly belong to particular schema of database, but they are associated with tables.)
+The schema part of constraint identifier should represent the schema of associated table. (Constraints do not dirrectly belong to particular schema of database, but they are associated with tables.)
 
 When constraint is modified it will always be dropped and created again.
 
@@ -167,6 +172,8 @@ alter table table1
 add constraint table1_t0_id_fk foreign key (t0_id) references table1 (id);
 ```
 
+
+Postgres allows you to have the same name constraints assigned to different tables. But pgfine will only work with uniquely defined constraints per schema.
 
 
 # Commands
@@ -194,8 +201,6 @@ Creates an up to date fresh databaes using `PGFINE_ADMIN_CONNECTION_STRING` and 
 
 - Uses `PGFINE_ADMIN_CONNECTION_STRING` credentials to connect to database.
 - Uses executes `/pgfine/drop/*.sql` scripts to drop database and role.
-
-
 
 
 
@@ -245,10 +250,10 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] example projects at `./example/`
 - [ ] ability to override dependencies in comment section when standard resolution fails
 - [x] implement `PGFINE_DIR`
-- [ ] ecplain errors better in `database::migrate`, `database::drop`, `project::init`
+- [ ] explain errors better in `database::migrate`, `database::drop`, `project::init`
 - [x] document timeouts
 - [ ] make README.md readable
-- [ ] build dependencies lazily? (does not allow to drop if error happens)
+- [x] build dependencies lazily? (does not allow to drop if error happens)
 - [ ] drop missing objects with deps
 
 
@@ -257,6 +262,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] operations in single transaction if possible
 - [ ] configurable search schemas
 - [ ] make execute order deterministic
+- [ ] ignore comments in scripts when resolving dependencies
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database

@@ -350,7 +350,9 @@ fn update_objects(
     pg_client: &mut postgres::Client,
     database_project: &DatabaseProject
 ) -> anyhow::Result<()> {
-    for object_id in database_project.execute_order.iter() {
+    let execute_order = database_project.get_execute_order()
+        .context("update_objects error: could not get execute order")?;
+    for object_id in execute_order.iter() {
         let object = database_project.objects.get(object_id).unwrap();
         update_object_with_deps(pg_client, &object, &database_project.objects)
             .with_context(|| format!("update_objects error: {:?}", object))?;

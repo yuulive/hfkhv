@@ -399,7 +399,6 @@ pub struct DatabaseProject {
     pub drop_scripts: Vec<(PathBuf, String)>,
     pub migration_scripts: Vec<(String, String)>,
     pub objects: HashMap<String, DatabaseObject>,
-    pub execute_order: Vec<String>,
 }
 
 impl DatabaseProject {
@@ -438,7 +437,6 @@ impl DatabaseProject {
         let required_by = calc_required_by(&objects_info, &search_schemas);
         let depends_on = calc_depends_on(&required_by);
         let objects = build_database_objects(objects_info, required_by, depends_on)?;
-        let execute_order= calc_execute_order(&objects)?;
 
         return Ok(DatabaseProject {
             project_dirpath: path_buf,
@@ -446,7 +444,6 @@ impl DatabaseProject {
             drop_scripts,
             migration_scripts,
             objects,
-            execute_order,
         });
     }
 
@@ -458,6 +455,10 @@ impl DatabaseProject {
             }
         }
         return None;
+    }
+
+    pub fn get_execute_order(&self) -> anyhow::Result<Vec<String>> {
+        return calc_execute_order(&self.objects);
     }
 }
 
