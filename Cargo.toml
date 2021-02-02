@@ -5,7 +5,7 @@ version = "0.3.0"
 authors = ["Marius Kavaliauskas <mariuskava@gmail.com>"]
 edition = "2018"
 license = "MIT"
-keywords = ["pgfine", "postgres", "postgresql", "migration", "database", "cli"]
+keywords = ["postgres", "postgresql", "migration", "database", "versioning"]
 repository = "https://gitlab.com/mrsk/pgfine"
 categories = ["database", "command-line-utilities"]
 
