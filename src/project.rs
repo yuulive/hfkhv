@@ -104,6 +104,7 @@ pub fn init() -> anyhow::Result<()> {
     fs::create_dir(project_path.join("functions"))?;
     fs::create_dir(project_path.join("roles"))?;
     fs::create_dir(project_path.join("migrations"))?;
+    fs::create_dir(project_path.join("constraints"))?;
 
     {
         let (filename, content) = get_create_script_00();
@@ -147,7 +148,7 @@ fn object_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
         bail!("Database object filename must contain schema and name separated by '.'. {:?}", path_buf)
     }
 
-    return Ok(filestem_str.into());
+    return Ok(filestem_str.to_lowercase());
 }
 
 fn migration_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
@@ -190,9 +191,8 @@ fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (
     let path_buf = project_path.join("functions");
     load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Function)?;
 
-    
-
-    // FIXME add constraints
+    let path_buf = project_path.join("constraints");
+    load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Constraint)?;
 
     return Ok(result);
 }
@@ -304,7 +304,7 @@ fn resolve_dependencies(
     }
 
     if visited.contains(object_id) {
-        bail!("resolve_dependencies error: cicle detected {:?}", object_id);
+        bail!("resolve_dependencies error: cycle detected {:?}", object_id);
     }
     visited.insert(object_id.clone());
 
@@ -352,6 +352,7 @@ pub enum DatabaseObjectType {
     Table,
     View,
     Function,
+    Constraint,
 }
 
 impl From<DatabaseObjectType> for String {
@@ -359,7 +360,8 @@ impl From<DatabaseObjectType> for String {
         match t {
             DatabaseObjectType::Table => "table".into(),
             DatabaseObjectType::View => "view".into(),
-            DatabaseObjectType::Function => "function".into()
+            DatabaseObjectType::Function => "function".into(),
+            DatabaseObjectType::Constraint => "constraint".into(),
         }
     }
 }
@@ -371,6 +373,7 @@ impl TryFrom<&str> for DatabaseObjectType {
             "table" => DatabaseObjectType::Table,
             "view" => DatabaseObjectType::View,
             "function" => DatabaseObjectType::Function,
+            "constraint" => DatabaseObjectType::Constraint,
             _ => bail!("could not convert object type from {:?}", t),
         };
         return Ok(object_type);

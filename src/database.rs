@@ -83,7 +83,15 @@ fn exists_object_by_type_id(
                 from pg_proc p
                 join pg_namespace n on n.oid = p.pronamespace
                 where lower(n.nspname || '.' || p.proname) = lower($1)
-            )",
+            );",
+        DatabaseObjectType::Constraint => "
+            select exists (
+                select 1
+                from pg_constraint c
+                join pg_class t on t.oid = c.conrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
+            );",
     };
     let row = pg_client.query_one(sql, &[&object_id])
         .context(format!("exists_object error quering {:?} {:?}", object_type, object_id))?;
@@ -123,6 +131,7 @@ fn check_hash(
     return Ok(false);
 }
 
+// FIXME remove this function
 fn drop_object_by_type_id(
     pg_client: &mut postgres::Client,
     object_type: &DatabaseObjectType,
@@ -132,6 +141,7 @@ fn drop_object_by_type_id(
         DatabaseObjectType::Table => panic!("attempting to drop table {:?}", object_id),
         DatabaseObjectType::View => format!("drop view {}", object_id),
         DatabaseObjectType::Function => format!("drop function {}", object_id),
+        DatabaseObjectType::Constraint => panic!("not implemented {:?}", object_id),
     };
     println!("drop {:?} {:?}", object_type, object_id);
     pg_client.batch_execute(&sql)?;
@@ -142,13 +152,56 @@ fn drop_object(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject
 ) -> anyhow::Result<()> {
-    let sql = match object.object_type {
-        DatabaseObjectType::Table => panic!("attempting to drop table {:?}", object),
-        DatabaseObjectType::View => format!("drop view {}", object.id),
-        DatabaseObjectType::Function => format!("drop function {}", object.id),
-    };
     println!("drop {:?} {:?}", object.object_type, object.id);
-    pg_client.batch_execute(&sql)?;
+    match object.object_type {
+        DatabaseObjectType::Table => panic!("attempting to drop a table {:?}", object),
+        DatabaseObjectType::View => {
+            let sql = format!("drop view {}", object.id);
+            pg_client.batch_execute(&sql)?;
+        },
+        DatabaseObjectType::Function => {
+            let sql = format!("drop function {}", object.id);
+            pg_client.batch_execute(&sql)?;
+        },
+        DatabaseObjectType::Constraint => {
+            // 1. select table name constraint belongs to.
+            // 2. validate if table is one of constraints dependencies.
+            // 3. build drop sql.
+            // 4. execute.
+
+            let select_table_sql = "
+                select 
+                    lower(n.nspname) || '.' || lower(t.relname) as table_object_id,
+                    lower(c.conname) as constraint_name
+                from pg_constraint c
+                join pg_class t on t.oid = c.conrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
+            ";
+
+            let row = pg_client.query_one(select_table_sql, &[&object.id])
+                .context(format!("single table was expected for a given constrain {:?}; check sql: {}", object.id, select_table_sql))?;
+
+            let table_object_id: String = row.try_get(0)
+                .context(format!("could not parse table name for constraint {:?}", object.id))?;
+
+            let constraint_name: String = row.try_get(1)
+            .context(format!("could not parse constraint name {:?}", object.id))?;
+            
+
+            if !object.depends_on.contains(&table_object_id) {
+                bail!("inconsistent constraint dependencies, it should always depend on associated table {:?} {:?}", object.id, table_object_id);
+            }
+            
+            let drop_constraint_sql = format!("alter table {table_id} drop constraint {constraint_name};",
+                table_id=table_object_id,
+                constraint_name=constraint_name
+            );
+
+            pg_client.batch_execute(&drop_constraint_sql)?;
+        },
+    };
+    
     return Ok(());
 }
 
@@ -162,18 +215,12 @@ fn drop_object_with_deps(
         return Ok(());
     }
 
-    let sql = match object.object_type {
-        DatabaseObjectType::Table => panic!("attempting to drop table {:?}", object),
-        DatabaseObjectType::View => format!("drop view {}", object.id),
-        DatabaseObjectType::Function => format!("drop function {}", object.id),
-    };
     for dep_id in object.required_by.iter() {
         let dep = objects.get(dep_id).unwrap();
         drop_object_with_deps(pg_client, &dep, &objects, dropped)?;
     }
 
-    println!("drop {:?} {:?}", object.object_type, object.id);
-    pg_client.batch_execute(&sql)?;
+    drop_object(pg_client, &object)?;
     dropped.insert(object.id.clone());
     return Ok(());
 }
@@ -203,13 +250,17 @@ fn update_object_with_deps(
     }
 
     println!("hash mismatch, update {:?} {:?}", object.object_type, object.id);
-    let update_result = pg_client.batch_execute(&object.script);
-    if update_result.is_ok() {
-        update_pgfine_object(pg_client, object)?;
-        return Ok(());
-    }
 
-    println!("update failed {:?} {:?}", object.object_type, object.id);
+    // constraints must be dropped and created again
+    if object.object_type != DatabaseObjectType::Constraint {    
+        let update_result = pg_client.batch_execute(&object.script);
+        if update_result.is_ok() {
+            update_pgfine_object(pg_client, object)?;
+            return Ok(());
+        }
+        println!("update failed {:?} {:?}", object.object_type, object.id);
+    }
+    
     let drop_result = drop_object(pg_client, &object);
     if drop_result.is_ok() {
         println!("create {:?} {:?}", object.object_type, object.id);
@@ -325,6 +376,7 @@ fn drop_missing_objects(
     database_project: &DatabaseProject
 ) -> anyhow::Result<()> {
 
+    // FIXME store 'required_by' to satisfy dependencies tree
     let sql_select_objects = "select object_id, object_type from pgfine_objects";
     let rows = pg_client.query(sql_select_objects, &[])
         .context("drop_missing_objects failed to select pgfine_objects")?;

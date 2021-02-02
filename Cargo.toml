@@ -1,13 +1,13 @@
 [package]
 name = "pgfine"
 description = "Yet another database migration tool for postgres."
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Marius Kavaliauskas <mariuskava@gmail.com>"]
 edition = "2018"
 license = "MIT"
-license-file = "LICENSE"
-keywords = ["pgfine", "postgres", "postgresql", "migration", "database"]
+keywords = ["pgfine", "postgres", "postgresql", "migration", "database", "cli"]
 repository = "https://gitlab.com/mrsk/pgfine"
+categories = ["database", "command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
