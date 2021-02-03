@@ -80,7 +80,23 @@ pgfine migrate
 Two extra tables will be created:
 
 - `pgfine_objects`: contains a list of managed pgfine objects and their hashes.
-- `pgfine_migrations`: Contains a list of executed migrations. Selecting the max value should reveal the current state of database. The first migration will be inserted as empty string.
+    ```sql
+        create table if not exists pgfine_objects (
+            po_id text primary key,
+            po_type text,
+            po_md5 text,
+            po_script text,
+            po_path text,
+            po_depends_on text[],
+            po_required_by text[]
+        );
+    ```
+- `pgfine_migrations`: contains a list of executed migrations. Selecting the max value should reveal the current state of database. The first migration will be inserted as empty string.
+    ```sql
+        create table if not exists pgfine_migrations (
+            pm_id text primary key
+        );
+    ```
 
 
 # Making changes to database
@@ -172,7 +188,6 @@ alter table table1
 add constraint table1_t0_id_fk foreign key (t0_id) references table1 (id);
 ```
 
-
 Postgres allows you to have the same name constraints assigned to different tables. But pgfine will only work with uniquely defined constraints per schema.
 
 
@@ -247,18 +262,22 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [x] support for circular constraints (by adding `./pgfine/constraints`)
 - [ ] more types of database objects (roles, triggers, rules?, indices.. ?)
 - [ ] support tls
-- [ ] example projects at `./example/`
 - [ ] ability to override dependencies in comment section when standard resolution fails
 - [x] implement `PGFINE_DIR`
-- [ ] explain errors better in `database::migrate`, `database::drop`, `project::init`
+- [x] explain errors better in `database::migrate`, `database::drop`, `project::init`
 - [x] document timeouts
 - [ ] make README.md readable
+- [ ] `PGFINE_ROLE_PREFIX` env variable to enable role per single database
 - [x] build dependencies lazily? (does not allow to drop if error happens)
-- [ ] drop missing objects with deps
-
+- [x] drop missing objects with deps
+- [ ] dependencies information should come from `pgfine_objects` table maybe?.
 
 # Post 1.0.0 plan
 
+- [ ] example projects at `./example/`
+- [ ] documentation https://documentation.divio.com/ https://jacobian.org/series/great-documentation/
+- [ ] `./pgfine/initial/` execute after the database is created 
+- [ ] `./pgfine/final/` execute after the database objects are created
 - [ ] operations in single transaction if possible
 - [ ] configurable search schemas
 - [ ] make execute order deterministic

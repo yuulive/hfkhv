@@ -4,13 +4,15 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use std::fs;
 use std::path;
-use std::convert::TryFrom;
+use std::iter::FromIterator;
+use std::str::FromStr;
 use path::PathBuf;
 use anyhow;
 use anyhow::Context;
 use md5::Md5;
 use md5::Digest;
 use hex;
+use postgres;
 use crate::utils;
 
 
@@ -89,7 +91,8 @@ DROP ROLE IF EXISTS \"{role_name}\";
 
 pub fn init() -> anyhow::Result<()> {
     
-    let project_path = get_project_path()?;
+    let project_path = get_project_path()
+        .context("init error: failed to get project path")?;
     
     if project_path.exists() {
         println!("project directory already exists at {:?}", project_path);
@@ -366,15 +369,16 @@ impl From<DatabaseObjectType> for String {
     }
 }
 
-impl TryFrom<&str> for DatabaseObjectType {
-    type Error = anyhow::Error;
-    fn try_from(t: &str) -> Result<Self, Self::Error> {
-        let object_type = match t {
+impl FromStr for DatabaseObjectType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let object_type = match s {
             "table" => DatabaseObjectType::Table,
             "view" => DatabaseObjectType::View,
             "function" => DatabaseObjectType::Function,
             "constraint" => DatabaseObjectType::Constraint,
-            _ => bail!("could not convert object type from {:?}", t),
+            _ => bail!("could not convert object type from {:?}", s),
         };
         return Ok(object_type);
     }
@@ -392,6 +396,49 @@ pub struct DatabaseObject {
     pub depends_on: HashSet<String>,
     pub required_by: HashSet<String>,
 }
+
+impl DatabaseObject {
+    pub fn from_db_row(row: &postgres::Row) -> anyhow::Result<Self> {
+        // po_id text primary key,
+        // po_type text,
+        // po_md5 text,
+        // po_script text,
+        // po_path text,
+        // po_depends_on text[],
+        // po_required_by text[]
+
+        let po_id: String = row.try_get("po_id")?;
+        let po_type: String = row.try_get("po_type")?;
+        let po_md5: String = row.try_get("po_md5")?;
+        let po_script: String = row.try_get("po_script")?;
+        let po_path: String = row.try_get("po_path")?;
+        let po_depends_on: Vec<String> = row.try_get("po_depends_on")?;
+        let po_required_by: Vec<String> = row.try_get("po_required_by")?;
+
+        let object_type = DatabaseObjectType::from_str(&po_type)?;
+        let id_parts: Vec<&str> = po_id.split('.').collect();
+        let schema: String = id_parts[0].into();
+        let name: String = id_parts[1].into();
+        let path_buf = PathBuf::from(po_path);
+        let depends_on = HashSet::from_iter(po_depends_on);
+        let required_by = HashSet::from_iter(po_required_by);
+
+        let result = DatabaseObject {
+            object_type,
+            id: po_id,
+            schema,
+            name,
+            path_buf,
+            script: po_script,
+            md5: po_md5,
+            depends_on,
+            required_by,
+        };
+
+        return Ok(result);
+    }
+}
+
 
 pub struct DatabaseProject {
     pub project_dirpath: PathBuf,
