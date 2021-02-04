@@ -10,14 +10,24 @@ pub mod utils;
 
 fn main() -> anyhow::Result<()> {
 
+    let about = format!("{}\n\n{}\n{}\n{}\n{}", 
+        clap::crate_description!(),
+        "ENVIRONMENT VARIABLES:",
+        "    PGFINE_DIR:                     project location",
+        "    PGFINE_CONNECTION_STRING:       connection string for target database",
+        "    PGFINE_ADMIN_CONNECTION_STRING: connection string for admin database",
+    );
+
+    let about_str = about.as_str();
+
     let mut clap: clap::App = clap::App::new(clap::crate_name!())
     .version(clap::crate_version!())
     .author(clap::crate_authors!("\n"))
-    .about(clap::crate_description!())
+    .about(about_str)
     .subcommand(clap::App::new("init")
-        .about("initializes new pgfine project"))
+        .about("initialize new pgfine project"))
     .subcommand(clap::App::new("migrate")
-        .about("updates database"))
+        .about("update database"))
     .subcommand(clap::App::new("drop")
         .about("drop entire database")
         .arg(clap::Arg::new("no-joke") // wtf
