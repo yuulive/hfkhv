@@ -73,15 +73,15 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
 
 
 
-    let execute_order_expected: Vec<String> = vec![
+    let create_order_expected: Vec<String> = vec![
         "s.obj_3".into(),
         "s.obj_2".into(),
         "s.obj_1".into(),
         "s.obj_0".into(),
     ];
-    let execute_order_actual = calc_execute_order(&objects)?;
+    let create_order_actual = calc_create_order(&objects)?;
 
-    assert_eq!(execute_order_actual, execute_order_expected);
+    assert_eq!(create_order_actual, create_order_expected);
     return Ok(());
 }
 
@@ -146,7 +146,7 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     objects.insert("s.obj_3".into(), obj_3);
 
 
-    let execute_order_actual = calc_execute_order(&objects);
+    let execute_order_actual = calc_create_order(&objects);
     assert_eq!(execute_order_actual.is_err(), true);
 
     return Ok(());

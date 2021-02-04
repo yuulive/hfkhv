@@ -1,7 +1,9 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::LinkedList;
 use std::iter::FromIterator;
+use std::ops::Sub;
 use anyhow;
 use anyhow::Context;
 use postgres;
@@ -119,93 +121,65 @@ fn exists_object(
 }
 
 
-
-fn update_table(pg_client: &mut postgres::Client, object: &DatabaseObject) -> anyhow::Result<()> {
-    let exists = exists_object(pg_client, object)?;
-    if !exists {
-        println!("create table {:?}", object.id);
-        pg_client.batch_execute(&object.script)?;
-    } else {
-        println!("table exists {:?}", object.id);
-    }
-    update_pgfine_object(pg_client, object)?;
-    return Ok(());
-}
-
-fn check_hash(
-    pg_client: &mut postgres::Client,
-    object: &DatabaseObject
-) -> anyhow::Result<bool> {
-    let sql = "
-        select max(po_md5) as po_md5 
-        from pgfine_objects 
-        where lower(po_id) = lower($1)
-    ";
-    let row = pg_client.query_one(sql, &[&object.id])?;
-    let md5_old_opt: Option<String> = row.try_get(0)?;
-    if let Some(md5_old) = md5_old_opt {
-        return Ok(md5_old == object.md5);
-    }
-    return Ok(false);
-}
-
-
 fn drop_object(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject
 ) -> anyhow::Result<()> {
-    println!("drop {:?} {:?}", object.object_type, object.id);
-    match object.object_type {
-        DatabaseObjectType::Table => bail!("attempting to drop a table {:?}, \
-            it could be that a table is dependent on a missing object, \
-            tables should be dropped manually or using migration scripts", object),
-        DatabaseObjectType::View => {
-            let sql = format!("drop view {}", object.id);
-            pg_client.batch_execute(&sql)?;
-        },
-        DatabaseObjectType::Function => {
-            let sql = format!("drop function {}", object.id);
-            pg_client.batch_execute(&sql)?;
-        },
-        DatabaseObjectType::Constraint => {
-            // 1. select table name constraint belongs to.
-            // 2. validate if table is one of constraints dependencies.
-            // 3. build drop sql.
-            // 4. execute.
+    println!("drop if exists {:?} {:?}", object.object_type, object.id);
+    let exists = exists_object(pg_client, object)?;
+    if exists {
+        match object.object_type {
+            DatabaseObjectType::Table => bail!("attempting to drop a table {:?}, \
+                tables should be dropped manually or using migration scripts", object.id),
+            DatabaseObjectType::View => {
+                let sql = format!("drop view {}", object.id);
+                pg_client.batch_execute(&sql)?;
+            },
+            DatabaseObjectType::Function => {
+                let sql = format!("drop function {}", object.id);
+                pg_client.batch_execute(&sql)?;
+            },
+            DatabaseObjectType::Constraint => {
+                // 1. select table name constraint belongs to.
+                // 2. validate if table is one of constraints dependencies.
+                // 3. build drop sql.
+                // 4. execute.
 
-            let select_table_sql = "
-                select 
-                    lower(n.nspname) || '.' || lower(t.relname) as table_object_id,
-                    lower(c.conname) as constraint_name
-                from pg_constraint c
-                join pg_class t on t.oid = c.conrelid
-                join pg_namespace n on n.oid = t.relnamespace
-                where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
-            ";
+                let select_table_sql = "
+                    select 
+                        lower(n.nspname) || '.' || lower(t.relname) as table_object_id,
+                        lower(c.conname) as constraint_name
+                    from pg_constraint c
+                    join pg_class t on t.oid = c.conrelid
+                    join pg_namespace n on n.oid = t.relnamespace
+                    where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
+                ";
 
-            let row = pg_client.query_one(select_table_sql, &[&object.id])
-                .context(format!("single table was expected for a given constrain {:?}; check sql: {}", object.id, select_table_sql))?;
+                let row = pg_client.query_one(select_table_sql, &[&object.id])
+                    .context(format!("single table was expected for a given constrain {:?}; check sql: {}", object.id, select_table_sql))?;
 
-            let table_object_id: String = row.try_get(0)
-                .context(format!("could not parse table name for constraint {:?}", object.id))?;
+                let table_object_id: String = row.try_get(0)
+                    .context(format!("could not parse table name for constraint {:?}", object.id))?;
 
-            let constraint_name: String = row.try_get(1)
-            .context(format!("could not parse constraint name {:?}", object.id))?;
-            
+                let constraint_name: String = row.try_get(1)
+                .context(format!("could not parse constraint name {:?}", object.id))?;
+                
 
-            if !object.depends_on.contains(&table_object_id) {
-                bail!("inconsistent constraint dependencies, it should always depend on associated table {:?} {:?}", object.id, table_object_id);
-            }
-            
-            let drop_constraint_sql = format!("alter table {table_id} drop constraint {constraint_name};",
-                table_id=table_object_id,
-                constraint_name=constraint_name
-            );
+                if !object.depends_on.contains(&table_object_id) {
+                    bail!("inconsistent constraint dependencies, it should always depend on associated table {:?} {:?}", object.id, table_object_id);
+                }
+                
+                let drop_constraint_sql = format!("alter table {table_id} drop constraint {constraint_name};",
+                    table_id=table_object_id,
+                    constraint_name=constraint_name
+                );
 
-            pg_client.batch_execute(&drop_constraint_sql)?;
-        },
-    };
-    
+                pg_client.batch_execute(&drop_constraint_sql)?;
+            },
+        };
+    }
+
+    delete_pgfine_object(pg_client, &object.id)?;
     return Ok(());
 }
 
@@ -236,62 +210,20 @@ fn drop_object_with_deps(
     return Ok(());
 }
 
-fn update_object_with_deps(
+fn create_if_missing(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject,
-    objects: &HashMap<String, DatabaseObject>
 ) -> anyhow::Result<()> {
-    if object.object_type == DatabaseObjectType::Table {
-        update_table(pg_client, &object)?;
-        return Ok(());
-    }
-
     let exists = exists_object(pg_client, object)?;
-    if !exists {
-        println!("does not exist, create {:?} {:?}", object.object_type, object.id);
-        pg_client.batch_execute(&object.script)?;
-        update_pgfine_object(pg_client, object)?;
+    if exists {
         return Ok(());
     }
-
-    let hash_matching = check_hash(pg_client, &object)?;
-    if hash_matching {
-        println!("object is up to date {:?} {:?}", object.object_type, object.id);
-        return Ok(());
-    }
-
-    println!("hash mismatch, update {:?} {:?}", object.object_type, object.id);
-
-    // constraints must be dropped and created again
-    if object.object_type != DatabaseObjectType::Constraint {    
-        let update_result = pg_client.batch_execute(&object.script);
-        if update_result.is_ok() {
-            update_pgfine_object(pg_client, object)?;
-            return Ok(());
-        }
-        println!("update failed {:?} {:?}", object.object_type, object.id);
-    }
-
-    let drop_result = drop_object(pg_client, &object);
-    if drop_result.is_ok() {
-        println!("create {:?} {:?}", object.object_type, object.id);
-        pg_client.batch_execute(&object.script)?;
-        update_pgfine_object(pg_client, object)?;
-        return Ok(());
-    }
-
-    println!("drop failed, attempting to drop dependencies {:?} {:?}", object.object_type, object.id);
-    let mut dropped: HashSet<String> = HashSet::new();
-    let mut visited: HashSet<String> = HashSet::new();
-    drop_object_with_deps(pg_client, &object, &objects, &mut dropped, &mut visited)
-        .context(format!("drop dependencies failed {:?}", object))?;
-    
     println!("create {:?} {:?}", object.object_type, object.id);
     pg_client.batch_execute(&object.script)?;
-    update_pgfine_object(pg_client, object)?;
+    update_pgfine_object(pg_client, &object)?;
     return Ok(());
-
 }
+
 
 fn prepare_admin_script(template_str: &str) -> anyhow::Result<String> {
     let database_name = utils::get_database_name()?;
@@ -363,18 +295,146 @@ fn create_pgfine_tables(
     return Ok(());
 }
 
+
+fn select_db_objects(
+    pg_client: &mut postgres::Client
+) -> anyhow::Result<HashMap<String, DatabaseObject>> {
+    let mut result = HashMap::new();
+    let sql = "select * from pgfine_objects;";
+    let rows = pg_client.query(sql, &[])?;
+    for row in rows {
+        let object = DatabaseObject::from_db_row(&row)?;
+        result.insert(object.id.clone(), object);
+    }
+    return Ok(result);
+}
+
+
+fn collect_required_by(
+    set: &mut HashSet<String>,
+    objects: &HashMap<String, DatabaseObject>
+) {
+    let mut ll = LinkedList::from_iter(set.clone());
+    while ll.len() > 0 {
+        let object_id = ll.pop_front().unwrap();
+        let object_opt = objects.get(&object_id);
+
+        if let Some(object) = object_opt {
+            for req_id in object.required_by.iter() {
+                if !set.contains(req_id) {
+                    ll.push_back(req_id.clone());
+                }
+            }
+        }
+
+        if !set.contains(&object_id) {
+            set.insert(object_id.clone());
+        }
+    }
+}
+
+
 fn update_objects(
     pg_client: &mut postgres::Client,
     database_project: &DatabaseProject
 ) -> anyhow::Result<()> {
-    let execute_order = database_project.get_execute_order()
-        .context("update_objects error: could not get execute order")?;
-    for object_id in execute_order.iter() {
-        let object = database_project.objects.get(object_id).unwrap();
-        update_object_with_deps(pg_client, &object, &database_project.objects)
-            .with_context(|| format!("update_objects error: {:?}", object))?;
+
+    let db_objects = select_db_objects(pg_client)?;
+    
+    let mut drop_set: HashSet<String> = HashSet::new();
+    let mut dirty_tables_set: HashSet<String> = HashSet::new();
+
+    for (db_object_id, db_object) in db_objects.iter() {
+        if !database_project.objects.contains_key(db_object_id) {
+            if db_object.object_type == DatabaseObjectType::Table {
+                dirty_tables_set.insert(db_object_id.clone());
+            } else {
+                drop_set.insert(db_object_id.clone());
+            }
+        } else {
+            let p_object = &database_project.objects[db_object_id];
+            if p_object.md5 != db_object.md5 {
+                if db_object.object_type == DatabaseObjectType::Table {
+                    dirty_tables_set.insert(db_object_id.clone());
+                } else {
+                    drop_set.insert(db_object_id.clone());
+                }
+            }
+        }
     }
-    drop_missing_objects(pg_client, &database_project)?;
+
+    // check tables
+    let mut dirty_tables_sorted = Vec::from_iter(&dirty_tables_set);
+    dirty_tables_sorted.sort();
+    for dirty_table_id in dirty_tables_sorted {
+        let object = &db_objects[dirty_table_id];
+        let exists = exists_object(pg_client, object)?;
+        let deleted = !database_project.objects.contains_key(dirty_table_id);
+        if exists && deleted {
+            bail!("table was deleted from project, but it still exists in database, \
+            it should be dropped manually or using migrations scripts {:?}", dirty_table_id);
+        } else if (!exists) && deleted {
+            println!("deleting pgfine_objects record for table {:?}", dirty_table_id);
+            delete_pgfine_object(pg_client, dirty_table_id)?;
+        } else if exists && (!deleted) {
+            println!("table script was modified, overwriting pgfine_objects record {:?}", dirty_table_id);
+            let p_object = &database_project.objects[dirty_table_id];
+            update_pgfine_object(pg_client, &p_object)?;
+        }
+        
+        // else table will be created in later step
+    }
+
+
+
+    collect_required_by(&mut drop_set, &db_objects);
+
+    let mut dropped: HashSet<String> = HashSet::new();
+    let mut drop_list = Vec::from_iter(drop_set.clone());
+    while drop_set.len() > 0 {
+        let dropped_len = dropped.len();
+        
+        drop_list.sort();
+        for drop_object_id in drop_list {
+            let mut visited: HashSet<String> = HashSet::new();
+            
+            let object;
+            if db_objects.contains_key(&drop_object_id) {
+                object = &db_objects[&drop_object_id];
+            } else if database_project.objects.contains_key(&drop_object_id) {
+                object = &database_project.objects[&drop_object_id];
+            } else {
+                println!("failed to drop, missing pgfine_objects {:?}", drop_object_id);
+                continue;
+            }
+            
+
+            let drop_result = drop_object_with_deps(pg_client, &object, &db_objects, &mut dropped, &mut visited);
+            if drop_result.is_err() {
+                println!("failed to drop {:?} {:?}", object.object_type, object.id);
+            }
+        }
+
+        drop_set = drop_set.sub(&dropped);
+        drop_list = Vec::from_iter(drop_set.clone());
+        
+        if dropped.len() == dropped_len {
+            bail!("ubdate_objects error: could not drop these objects {:?}", drop_list);
+        }
+        if drop_set.len() > 0 {
+            println!("one more drop iteration will be attempted {:?}", drop_list);
+        }
+    }
+
+    let create_order = database_project.get_create_order()
+        .context("update_objects error: could not get create order")?;
+
+    for object_id in create_order.iter() {
+        let object = database_project.objects.get(object_id).unwrap();
+        create_if_missing(pg_client, &object)
+            .context(format!("update_objects error: could not create {:?} {:?}", object.object_type, object.id))?;
+    }
+    
     return Ok(());
 }
 
@@ -387,63 +447,6 @@ fn insert_pgfine_migration(
         select $1
         on conflict (pm_id) do nothing;";
     pg_client.execute(sql, &[&migration])?;
-    return Ok(());
-}
-
-fn drop_missing_objects(
-    pg_client: &mut postgres::Client,
-    database_project: &DatabaseProject
-) -> anyhow::Result<()> {
-
-    let sql_select_objects = "
-        select 
-            po_id,
-            po_type,
-            po_md5,
-            po_script,
-            po_path,
-            po_depends_on,
-            po_required_by
-        from pgfine_objects";
-    
-    let rows = pg_client.query(sql_select_objects, &[])
-        .context("drop_missing_objects failed to select pgfine_objects")?;
-    
-    
-    let mut missing_objects: HashMap<String, DatabaseObject> = HashMap::new();
-    for row in rows {
-        let db_object = DatabaseObject::from_db_row(&row)
-            .context("could not parse pgfine_objects row")?;
-        
-        if database_project.objects.contains_key(&db_object.id) {
-            continue;
-        }
-
-        let exists = exists_object(pg_client, &db_object)?;
-        if !exists {
-            println!("delete_pgfine_object {:?}", db_object.id);
-            delete_pgfine_object(pg_client, &db_object.id)?;
-            continue;
-        }
-
-        if db_object.object_type == DatabaseObjectType::Table {
-            bail!("pgfine_objects record exists but it is missing in project, tables should be dropped manually or using migration scripts {:?}", db_object.id);
-        }
-        
-        missing_objects.insert(db_object.id.clone(), db_object);
-    }
-
-    let mut missing_objects_sorted: Vec<String> = Vec::from_iter(missing_objects.keys().cloned());
-    missing_objects_sorted.sort();
-
-    let mut dropped: HashSet<String> = HashSet::new();
-    for missing_object_id in missing_objects_sorted {
-        let missing_object = missing_objects.get(&missing_object_id).unwrap();
-        let mut visited: HashSet<String> = HashSet::new();
-        drop_object_with_deps(pg_client, &missing_object, &missing_objects, &mut dropped, &mut visited)?;
-        println!("delete_pgfine_object {:?}", missing_object.id);
-        delete_pgfine_object(pg_client, &missing_object.id)?;
-    }
     return Ok(());
 }
 
@@ -506,6 +509,7 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
                         if let Some((next_migration_id, next_migration_script)) 
                             = database_project.get_next_migration(&db_last_migration_current) 
                         {
+                            println!("execute migration script {:?}", next_migration_id);
                             pg_client.batch_execute(&next_migration_script)
                                 .context(format!("migrate error: failed to execute migration script {:?}", next_migration_id))?;
                             
@@ -548,6 +552,7 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
         .context("drop error: failed to get connection string")?;
 
     for (path_buf, script) in database_project.drop_scripts {
+        println!("drop database: executing {:?}", path_buf);
         let prepared_script = prepare_admin_script(&script)
             .context(format!("drop error: failed to prepare drop script {:?}", path_buf))?;
         pg_client.batch_execute(&prepared_script)

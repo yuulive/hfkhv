@@ -311,13 +311,11 @@ fn resolve_dependencies(
     }
     visited.insert(object_id.clone());
 
-    let new_dependencies;
-    {
-        let object = objects.get(object_id).unwrap();
-        new_dependencies = object.depends_on.clone();
-    }
+    let object = objects.get(object_id).unwrap();
+    let mut new_dependencies_sorted: Vec<&String> = Vec::from_iter(&object.depends_on);
+    new_dependencies_sorted.sort();
     
-    for dep in new_dependencies {
+    for dep in new_dependencies_sorted {
         resolve_dependencies(
             &dep,
             &objects,
@@ -332,11 +330,14 @@ fn resolve_dependencies(
     return Ok(());
 }
 
-fn calc_execute_order(objects: &HashMap<String, DatabaseObject>) -> anyhow::Result<Vec<String>> {
+fn calc_create_order(objects: &HashMap<String, DatabaseObject>) -> anyhow::Result<Vec<String>> {
     let mut dependencies_vec: Vec<String> = vec![];
     let mut dependencies_set: HashSet<String> = HashSet::new();
 
-    for object_id in objects.keys() {
+    let mut objects_sorted: Vec<&String> = Vec::from_iter(objects.keys());
+    objects_sorted.sort();
+
+    for object_id in objects_sorted {
         let mut visited: HashSet<String> = HashSet::new();
         resolve_dependencies(
             object_id, 
@@ -504,8 +505,8 @@ impl DatabaseProject {
         return None;
     }
 
-    pub fn get_execute_order(&self) -> anyhow::Result<Vec<String>> {
-        return calc_execute_order(&self.objects);
+    pub fn get_create_order(&self) -> anyhow::Result<Vec<String>> {
+        return calc_create_order(&self.objects);
     }
 }
 

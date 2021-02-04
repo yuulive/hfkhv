@@ -207,9 +207,8 @@ Creates an up to date fresh databaes using `PGFINE_ADMIN_CONNECTION_STRING` and 
 
 - Uses `PGFINE_CONNECTION_STRING` credentials to connect to a target database.
 - Applies new scripts in `./pgfine/migrations/` and inserts executed scripts into `pgfine_migrations` table.
-- Scans all objects in pgfine project dir and calculates update order to satisfy dependency tree.
-- Attempts to update each object whose script hash does not match the one in the `pgfine_objects` table (or drop the object if it was deleted).
-- Updates `pgfine_objects` table with newest information.
+- Attempts to drops all dirty objects by comparing `pgfine_objects` table and project contents.
+- Attempts to create all missing objects.
 
 
 ## `pgfine drop --no-joke`
@@ -270,17 +269,20 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] `PGFINE_ROLE_PREFIX` env variable to enable role per single database
 - [x] build dependencies lazily? (does not allow to drop if error happens)
 - [x] drop missing objects with deps
-- [ ] dependencies information should come from `pgfine_objects` table maybe?.
+- [x] dependencies information should come from `pgfine_objects` table maybe?.
+
 
 # Post 1.0.0 plan
 
+- [ ] validate table schema when hash has changed (by creating separate DB? and comparing?) before applying all other updates
+- [ ] `PGFINE_ALLOW_DROP` variable to protect production envs
 - [ ] example projects at `./example/`
 - [ ] documentation https://documentation.divio.com/ https://jacobian.org/series/great-documentation/
 - [ ] `./pgfine/initial/` execute after the database is created 
 - [ ] `./pgfine/final/` execute after the database objects are created
 - [ ] operations in single transaction if possible
 - [ ] configurable search schemas
-- [ ] make execute order deterministic
+- [x] make execute order deterministic
 - [ ] ignore comments in scripts when resolving dependencies
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
