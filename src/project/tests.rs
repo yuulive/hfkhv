@@ -20,8 +20,6 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
     let obj_0 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_0".into(),
-        schema: "s".into(),
-        name: "obj_0".into(),
         path_buf: "s.obj_0".into(),
         script: "create s.obj_0;".into(),
         md5: "asd".into(),
@@ -32,8 +30,6 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
     let obj_1 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_1".into(),
-        schema: "s".into(),
-        name: "obj_0".into(),
         path_buf: "s.obj_1".into(),
         script: "create s.obj_1;".into(),
         md5: "asd".into(),
@@ -44,8 +40,6 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
     let obj_2 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_2".into(),
-        schema: "s".into(),
-        name: "obj_0".into(),
         path_buf: "s.obj_2".into(),
         script: "create s.obj_2;".into(),
         md5: "asd".into(),
@@ -56,8 +50,6 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
     let obj_3 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_3".into(),
-        schema: "s".into(),
-        name: "obj_0".into(),
         path_buf: "s.obj_3".into(),
         script: "create s.obj_3;".into(),
         md5: "asd".into(),
@@ -94,8 +86,6 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     let obj_0 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_0".into(),
-        schema: "s".into(),
-        name: "obj_0".into(),
         path_buf: "s.obj_0".into(),
         script: "create s.obj_0;".into(),
         md5: "asd".into(),
@@ -106,8 +96,6 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     let obj_1 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_1".into(),
-        schema: "s".into(),
-        name: "obj_1".into(),
         path_buf: "s.obj_1".into(),
         script: "create s.obj_1;".into(),
         md5: "asd".into(),
@@ -118,8 +106,6 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     let obj_2 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_2".into(),
-        schema: "s".into(),
-        name: "obj_2".into(),
         path_buf: "s.obj_2".into(),
         script: "create s.obj_2;".into(),
         md5: "asd".into(),
@@ -130,8 +116,6 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     let obj_3 = DatabaseObject {
         object_type: DatabaseObjectType::Table,
         id: "s.obj_3".into(),
-        schema: "s".into(),
-        name: "obj_3".into(),
         path_buf: "s.obj_3".into(),
         script: "create s.obj_3;".into(),
         md5: "asd".into(),

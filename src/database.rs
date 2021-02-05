@@ -112,6 +112,12 @@ fn exists_object(
                 join pg_namespace n on n.oid = t.relnamespace
                 where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
             );",
+        DatabaseObjectType::Role => "
+            select exists (
+                select 1
+                from pg_roles
+                where lower(rolname) = lower($1)
+            );"
     };
     let row = pg_client.query_one(sql, &[&object.id])
         .context(format!("exists_object error quering {:?} {:?}", object.object_type, object.id))?;
@@ -176,6 +182,10 @@ fn drop_object(
 
                 pg_client.batch_execute(&drop_constraint_sql)?;
             },
+            DatabaseObjectType::Role => {
+                let sql = format!("drop role {}", object.id);
+                pg_client.batch_execute(&sql)?;
+            }
         };
     }
 
@@ -391,6 +401,7 @@ fn update_objects(
 
     let mut dropped: HashSet<String> = HashSet::new();
     let mut drop_list = Vec::from_iter(drop_set.clone());
+    let mut last_error: Option<anyhow::Error> = None;
     while drop_set.len() > 0 {
         let dropped_len = dropped.len();
         
@@ -405,6 +416,7 @@ fn update_objects(
                 object = &database_project.objects[&drop_object_id];
             } else {
                 println!("failed to drop, missing pgfine_objects {:?}", drop_object_id);
+                last_error = Some(anyhow!("failed to drop, missing pgfine_objects {:?}", drop_object_id));
                 continue;
             }
             
@@ -412,6 +424,7 @@ fn update_objects(
             let drop_result = drop_object_with_deps(pg_client, &object, &db_objects, &mut dropped, &mut visited);
             if drop_result.is_err() {
                 println!("failed to drop {:?} {:?}", object.object_type, object.id);
+                last_error = drop_result.err();
             }
         }
 
@@ -419,7 +432,11 @@ fn update_objects(
         drop_list = Vec::from_iter(drop_set.clone());
         
         if dropped.len() == dropped_len {
-            bail!("ubdate_objects error: could not drop these objects {:?}", drop_list);
+            if let Some(e) = last_error {
+                return Err(e.context(format!("ubdate_objects error: could not drop these objects {:?}", drop_list)));
+            } else {
+                bail!("ubdate_objects error: could not drop these objects {:?}", drop_list);
+            }
         }
         if drop_set.len() > 0 {
             println!("one more drop iteration will be attempted {:?}", drop_list);

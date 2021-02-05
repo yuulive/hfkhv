@@ -25,6 +25,12 @@ fn get_project_path() -> anyhow::Result<PathBuf> {
     return Ok(PathBuf::from(project_path_str));
 }
 
+fn get_role_prefix() -> anyhow::Result<String> {
+    let role_prefix = utils::read_env_var("PGFINE_ROLE_PREFIX")
+        .context("get_role_prefix error: failed to read env variable PGFINE_ROLE_PREFIX")?;
+    return Ok(role_prefix);
+}
+
 fn get_create_script_00() -> (String, String) {
     let filename = String::from("00-create-role.sql");
     let content = "
@@ -33,8 +39,11 @@ fn get_create_script_00() -> (String, String) {
 -- -- role_name
 -- -- password
 -- parameters are taken from PGFINE_CONNECTION_STRING env variable
--- parameters are validated to contain only alphanum cahracters and underscore
-CREATE ROLE \"{role_name}\" WITH LOGIN PASSWORD '{password}'
+-- parameters are validated to contain only alphanum cahracters and underscores
+CREATE ROLE \"{role_name}\"
+WITH
+LOGIN PASSWORD '{password}'
+CREATEROLE;
 ".into();
     return (filename, content);
 }
@@ -47,7 +56,7 @@ fn get_create_script_01() -> (String, String) {
 -- -- role_name
 -- -- password
 -- parameters are taken from PGFINE_CONNECTION_STRING env variable
--- parameters are validated to contain only alphanum cahracters and underscore
+-- parameters are validated to contain only alphanum cahracters and underscores
 CREATE DATABASE \"{database_name}\"
 WITH
 OWNER = \"{role_name}\"
@@ -69,7 +78,7 @@ fn get_drop_script_00() -> (String, String) {
 -- -- role_name
 -- -- password
 -- parameters are taken from PGFINE_CONNECTION_STRING env variable
--- parameters are validated to contain only alphanum cahracters and underscore
+-- parameters are validated to contain only alphanum cahracters and underscores
 DROP DATABASE IF EXISTS \"{database_name}\" WITH (FORCE);
 ".into();
     return (filename, content);
@@ -83,7 +92,7 @@ fn get_drop_script_01() -> (String, String) {
 -- -- role_name
 -- -- password
 -- parameters are taken from PGFINE_CONNECTION_STRING env variable
--- parameters are validated to contain only alphanum cahracters and underscore
+-- parameters are validated to contain only alphanum cahracters and underscores
 DROP ROLE IF EXISTS \"{role_name}\";
 ".into();
     return (filename, content);
@@ -137,21 +146,33 @@ pub fn init() -> anyhow::Result<()> {
     return Ok(());
 }
 
-fn object_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
+fn object_id_from_path(
+    path_buf: &PathBuf,
+    object_type: &DatabaseObjectType
+) -> anyhow::Result<String> {
     
     let filestem = path_buf.file_stem()
         .ok_or(anyhow!("object_id_from_path error: could not parse filename {:?}", path_buf))?;
     let filestem_str = filestem.to_str()
         .ok_or(anyhow!("object_id_from_path error: could not parse filename {:?}", path_buf))?;
 
-    
+    match object_type {
+        DatabaseObjectType::Role => {
+            let role_prefix = get_role_prefix()?;
+            if filestem_str.contains(".") {
+                bail!("filename for role objects should not be separated by dot, role prefix is specified via env variable");
+            }
 
-    let parts: Vec<&str> = filestem_str.split('.').collect();
-    if parts.len() != 2 {
-        bail!("Database object filename must contain schema and name separated by '.'. {:?}", path_buf)
+            return Ok(format!("{}{}", role_prefix, filestem_str).to_lowercase());
+        },
+        _ => {
+            let parts: Vec<&str> = filestem_str.split('.').collect();
+            if parts.len() != 2 {
+                bail!("Database object filename must contain schema and name separated by '.' (except for roles). {:?}", path_buf)
+            }
+            return Ok(filestem_str.to_lowercase());
+        }
     }
-
-    return Ok(filestem_str.to_lowercase());
 }
 
 fn migration_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
@@ -163,20 +184,30 @@ fn migration_id_from_path(path_buf: &PathBuf) -> anyhow::Result<String> {
     return Ok(filename_str.into());
 }
 
+fn prepare_script(
+    script: &str,
+    role_prefix: &str
+) -> String {
+    let result = script.replace("{pgfine_role_prefix}", role_prefix);
+    return result;
+}
 
 fn load_objects_info_by_type(
     result: &mut HashMap<String, (DatabaseObjectType, PathBuf, String)>, 
     path_buf: &PathBuf,
-    object_type: DatabaseObjectType
+    object_type: &DatabaseObjectType
 ) -> anyhow::Result<()> {
+    let role_prefix = get_role_prefix()?;
     let ls_paths = utils::list_files(&path_buf)
         .context(format!("load_objects_info error: failed to list files at {:?}", path_buf))?;
     for ls_path in ls_paths {
-        let object_id = object_id_from_path(&ls_path)
+        let object_id = object_id_from_path(&ls_path, &object_type)
             .context(format!("load_objects_info error: failed to parse object_id {:?}", ls_path))?;
         let script = utils::read_file(&ls_path)
             .context(format!("load_objects_info error: failed to read file {:?}", ls_path))?;
-        result.insert(object_id, (object_type, ls_path, script));
+        
+        let script = prepare_script(&script, &role_prefix);
+        result.insert(object_id, (object_type.clone(), ls_path, script));
     }
     return Ok(());
 }
@@ -186,17 +217,21 @@ fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (
     let mut result = HashMap::new();
 
     let path_buf = project_path.join("tables");
-    load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Table)?;
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Table)?;
 
     let path_buf = project_path.join("views");
-    load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::View)?;
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::View)?;
 
     let path_buf = project_path.join("functions");
-    load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Function)?;
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Function)?;
 
     let path_buf = project_path.join("constraints");
-    load_objects_info_by_type(&mut result, &path_buf, DatabaseObjectType::Constraint)?;
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Constraint)?;
 
+    let path_buf = project_path.join("roles");
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Role)?;
+
+    
     return Ok(result);
 }
 
@@ -205,15 +240,20 @@ fn calc_required_by_for_object(
     objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
     search_schemas: &HashSet<String>
 ) -> HashSet<String> {
+    let object_type = objects_info[object_id].0;
     let mut result = HashSet::new();
-    let id_parts: Vec<&str> = object_id.split('.').collect();
-    let schema: &str = id_parts[0].into();
-    let name: &str = id_parts[1].into();
     let search_term;
-    if search_schemas.contains(schema) {
-        search_term = name;
-    } else {
+    if object_type == DatabaseObjectType::Role {
         search_term = object_id;
+    } else {
+        let id_parts: Vec<&str> = object_id.split('.').collect();
+        let schema: &str = id_parts[0].into();
+        let name: &str = id_parts[1].into();
+        if search_schemas.contains(schema) {   
+            search_term = name;
+        } else {
+            search_term = object_id;
+        }
     }
 
     for (required_by_object_id, (_, _, script)) in objects_info {
@@ -273,17 +313,12 @@ fn build_database_objects(
         let object_depends_on = depends_on.remove(&object_id).expect("depends_on.remove(&object_id)");
         let object_required_by = required_by.remove(&object_id).expect("required_by.remove(&object_id)");
         let id = object_id.clone();
-        let id_parts: Vec<&str> = id.split('.').collect();
-        let schema: String = id_parts[0].into();
-        let name: String = id_parts[1].into();
         hasher.update(&script);
         let hash = hasher.finalize_reset();
         let hash_str = hex::encode(hash);
         let o = DatabaseObject {
             object_type: object_type,
             id,
-            schema,
-            name,
             path_buf: path_buf,
             script: script,
             md5: hash_str,
@@ -357,6 +392,7 @@ pub enum DatabaseObjectType {
     View,
     Function,
     Constraint,
+    Role,
 }
 
 impl From<DatabaseObjectType> for String {
@@ -366,6 +402,7 @@ impl From<DatabaseObjectType> for String {
             DatabaseObjectType::View => "view".into(),
             DatabaseObjectType::Function => "function".into(),
             DatabaseObjectType::Constraint => "constraint".into(),
+            DatabaseObjectType::Role => "role".into(),
         }
     }
 }
@@ -379,6 +416,7 @@ impl FromStr for DatabaseObjectType {
             "view" => DatabaseObjectType::View,
             "function" => DatabaseObjectType::Function,
             "constraint" => DatabaseObjectType::Constraint,
+            "role" => DatabaseObjectType::Role,
             _ => bail!("could not convert object type from {:?}", s),
         };
         return Ok(object_type);
@@ -389,8 +427,8 @@ impl FromStr for DatabaseObjectType {
 pub struct DatabaseObject {
     pub object_type: DatabaseObjectType,
     pub id: String,
-    pub schema: String,
-    pub name: String,
+    //pub schema: String, // or prefix for role object
+    //pub name: String,
     pub path_buf: PathBuf,
     pub script: String,
     pub md5: String,
@@ -399,6 +437,25 @@ pub struct DatabaseObject {
 }
 
 impl DatabaseObject {
+
+    pub fn schema(&self) -> anyhow::Result<&str> {
+        let id_parts: Vec<&str> = self.id.split('.').collect();
+        if id_parts.len() != 2 {
+            bail!("object id is not of the split of schema and name {:?}", self.id);
+        }
+        let result = id_parts[0];
+        return Ok(result);
+    }
+
+    pub fn name(&self) -> anyhow::Result<&str> {
+        let id_parts: Vec<&str> = self.id.split('.').collect();
+        if id_parts.len() != 2 {
+            bail!("object id is not of the split of schema and name {:?}", self.id);
+        }
+        let result = id_parts[1];
+        return Ok(result);
+    }
+
     pub fn from_db_row(row: &postgres::Row) -> anyhow::Result<Self> {
         // po_id text primary key,
         // po_type text,
@@ -417,9 +474,6 @@ impl DatabaseObject {
         let po_required_by: Vec<String> = row.try_get("po_required_by")?;
 
         let object_type = DatabaseObjectType::from_str(&po_type)?;
-        let id_parts: Vec<&str> = po_id.split('.').collect();
-        let schema: String = id_parts[0].into();
-        let name: String = id_parts[1].into();
         let path_buf = PathBuf::from(po_path);
         let depends_on = HashSet::from_iter(po_depends_on);
         let required_by = HashSet::from_iter(po_required_by);
@@ -427,8 +481,6 @@ impl DatabaseObject {
         let result = DatabaseObject {
             object_type,
             id: po_id,
-            schema,
-            name,
             path_buf,
             script: po_script,
             md5: po_md5,
