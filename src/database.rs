@@ -215,6 +215,40 @@ fn drop_object_with_deps(
     return Ok(());
 }
 
+
+fn force_drop_role_if_exists(
+    pg_client: &mut postgres::Client,
+    object: &DatabaseObject
+) -> anyhow::Result<()> {
+    if object.object_type != DatabaseObjectType::Role {
+        panic!("force_drop_role: object.object_type != DatabaseObjectType::Role");
+    }
+
+    let exists = exists_object(pg_client, object)?;
+    if !exists {
+        return Ok(());
+    }
+
+    println!("force drop role {:?}", object.id);
+
+    let role_name = utils::get_role_name()?;
+    
+    let sql = format!(
+        "
+        grant {drop_role_name} to {role_name};
+        reassign owned by {drop_role_name} to {role_name};
+        drop owned by {drop_role_name} cascade;
+        drop role {drop_role_name};
+        ", 
+        drop_role_name=object.id,
+        role_name=role_name,
+    );
+
+    pg_client.batch_execute(&sql)?;
+    return Ok(());
+}
+
+
 fn create_if_missing(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject,
@@ -575,17 +609,32 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
 
 
 pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
-    let mut pg_client = get_admin_pg_client()
-        .context("drop error: failed to get connection string")?;
+    let mut pg_client = get_pg_client()
+        .context("drop error: failed to connect")?;
 
-    // FIXME drop roles
+    let mut pg_admin_client = get_admin_pg_client()
+        .context("drop error: failed to connect as admin")?;
 
+    let db_objects = select_db_objects(&mut pg_client)?;
+    for (db_object_id, db_object) in db_objects.iter() {
+        if db_object.object_type == DatabaseObjectType::Role {
+            force_drop_role_if_exists(&mut pg_client, db_object)
+                .context(format!("drop error: failed to drop role, drop it manually or remove it from pgfine_objects table {:?}", db_object_id))?;
+        }
+    }
+
+    for (db_object_id, db_object) in database_project.objects.iter() {
+        if db_object.object_type == DatabaseObjectType::Role {
+            force_drop_role_if_exists(&mut pg_client, db_object)
+                .context(format!("drop error: failed to drop role, drop it manually or remove it from the project {:?}", db_object_id))?;
+        }
+    }
 
     for (path_buf, script) in database_project.drop_scripts {
         println!("drop database: executing {:?}", path_buf);
         let prepared_script = prepare_admin_script(&script)
             .context(format!("drop error: failed to prepare drop script {:?}", path_buf))?;
-        pg_client.batch_execute(&prepared_script)
+            pg_admin_client.batch_execute(&prepared_script)
             .context(format!("drop error: failed to execute drop script: {:?}", path_buf))?;
     }
 
