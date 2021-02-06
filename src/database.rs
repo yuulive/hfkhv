@@ -369,6 +369,20 @@ fn update_objects(
         }
     }
 
+
+    // drop p_objects which are missing in pgfine_objects and still exist in database
+    for (p_object_id, p_object) in database_project.objects.iter() {
+        if db_objects.contains_key(p_object_id) {
+            continue;
+        }
+
+        let exists = exists_object(pg_client, p_object)?;
+        if exists {
+            drop_set.insert(p_object_id.clone());
+        }
+    }
+
+
     // check tables
     let mut dirty_tables_sorted = Vec::from_iter(&dirty_tables_set);
     dirty_tables_sorted.sort();
@@ -564,6 +578,9 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
     let mut pg_client = get_admin_pg_client()
         .context("drop error: failed to get connection string")?;
 
+    // FIXME drop roles
+
+
     for (path_buf, script) in database_project.drop_scripts {
         println!("drop database: executing {:?}", path_buf);
         let prepared_script = prepare_admin_script(&script)
@@ -571,6 +588,7 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
         pg_client.batch_execute(&prepared_script)
             .context(format!("drop error: failed to execute drop script: {:?}", path_buf))?;
     }
+
     return Ok(());
 }
 
