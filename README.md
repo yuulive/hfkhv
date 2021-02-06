@@ -67,6 +67,7 @@ This will create directory for storing all pgfine project data:
 ├── roles
 ├── tables
 ├── constraints
+├── triggers
 └── views
 ```
 
@@ -110,7 +111,6 @@ Two extra tables will be created:
 - Apply any changes to database schema objects in `./pgfine/**/*.sql`.
 - All the chagnes related with tables should be implemented via `./pgfine/migrations/*` scripts.
 - For all other objects (not tables) it is enough to modify a related create/alter script. (ex. `./pgfine/views/public.view0.sql`)
-- Filenames for database objects must be of format `<schema>.<name>.sql`. Except for roles it is only `<role_name>.sql`
 - Run
 ```bash
 pgfine migrate
@@ -135,10 +135,19 @@ pgfine migrate
 Database objects are:
 - tables
 - views
-- indexes
+- triggers
 - constraints
 - functions
-- ...
+- roles 
+
+Filenames for database objects must be of specific format :
+- tables: `./pgfine/tables/<schema>.<name>.sql`
+- views: `./pgfine/views/<schema>.<name>.sql`
+- functions: : `./pgfine/functions/<schema>.<name>.sql`
+- triggers: `./pgfine/triggers/<schema>.<table>.<name>.sql`
+- constraints: `./pgfine/constraints/<schema>.<table>.<name>.sql`
+- roles: `./pgfine/roles/<name>.sql`
+
 
 Each database object has coresponding create script in pgfine project directory (see bellow for details). Filenames must consist of schema name and object name and `.sql` extension (example: `./pgfine/tables/public.some_table_0.sql`).
 
@@ -184,17 +193,11 @@ join table1 t1 on t1.id = t0.id
 
 ## Constraints
 
-The schema part of constraint identifier should represent the schema of associated table. (Constraints do not dirrectly belong to particular schema of database, but they are associated with tables.)
-
-When constraint is modified it will always be dropped and created again.
-
-Example `./pgfine/constraints/public.table1_t0_id_fk.sql`:
+Example `./pgfine/constraints/public.table1.t0_id_fk.sql`:
 ```sql
 alter table table1
-add constraint table1_t0_id_fk foreign key (t0_id) references table1 (id);
+add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 ```
-
-Postgres allows you to have the same name constraints assigned to different tables. But pgfine will only work with uniquely defined constraints per schema.
 
 
 # Commands
@@ -228,10 +231,9 @@ Creates an up to date fresh databaes using `PGFINE_ADMIN_CONNECTION_STRING` and 
 
 - Passwords, database names and roles can only have alphanumeric characters and underscore.
 - Each script filename must uniquely identify correspoinding database object.
-- Constraint names must be unique in a whole schema.
 - Filename information is used to track dependencies between objects using simple whole word search, assuming default `public` schema.
+- Triggers and Constraints are assumed not to have dependencies.
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
-- First we attempt to execute database_object script (which is usually `CREATE OR REPLACE`). If it fails we attempt to `DROP` (including dependencies if necesary) and `CREATE` a new version.
 - empty string is the name of the first migration
 - `{pgfine_role_prefix}` text should not be used for other porpuses as for database-role prefix in your scripts.
 
@@ -266,7 +268,8 @@ At the current stage pgfine is not the best thing in the world. You might also w
 # Plan for 1.0.0
 
 - [x] support for circular constraints (by adding `./pgfine/constraints`)
-- [ ] more types of database objects (~~roles~~, triggers,?)
+- [x] more types of database objects (roles, triggers,?)
+- [ ] drop roles on `pgfine drop`
 - [ ] support tls
 - [ ] ability to override dependencies in comment section when standard resolution fails
 - [x] implement `PGFINE_DIR`

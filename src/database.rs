@@ -110,13 +110,21 @@ fn exists_object(
                 from pg_constraint c
                 join pg_class t on t.oid = c.conrelid
                 join pg_namespace n on n.oid = t.relnamespace
-                where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
+                where lower(n.nspname || '.' || t.relname || '.' || c.conname) = lower($1)
             );",
         DatabaseObjectType::Role => "
             select exists (
                 select 1
                 from pg_roles
                 where lower(rolname) = lower($1)
+            );",
+        DatabaseObjectType::Trigger => "
+            select exists (
+                select 1
+                from pg_trigger t
+                join pg_class c on c.oid = t.tgrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                where lower(n.nspname || '.' || c.relname || '.' || t.tgname) = lower($1)
             );"
     };
     let row = pg_client.query_one(sql, &[&object.id])
@@ -146,37 +154,12 @@ fn drop_object(
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Constraint => {
-                // 1. select table name constraint belongs to.
-                // 2. validate if table is one of constraints dependencies.
-                // 3. build drop sql.
-                // 4. execute.
-
-                let select_table_sql = "
-                    select 
-                        lower(n.nspname) || '.' || lower(t.relname) as table_object_id,
-                        lower(c.conname) as constraint_name
-                    from pg_constraint c
-                    join pg_class t on t.oid = c.conrelid
-                    join pg_namespace n on n.oid = t.relnamespace
-                    where lower(n.nspname) || '.' || lower(c.conname) = lower($1)
-                ";
-
-                let row = pg_client.query_one(select_table_sql, &[&object.id])
-                    .context(format!("single table was expected for a given constrain {:?}; check sql: {}", object.id, select_table_sql))?;
-
-                let table_object_id: String = row.try_get(0)
-                    .context(format!("could not parse table name for constraint {:?}", object.id))?;
-
-                let constraint_name: String = row.try_get(1)
-                .context(format!("could not parse constraint name {:?}", object.id))?;
-                
-
-                if !object.depends_on.contains(&table_object_id) {
-                    bail!("inconsistent constraint dependencies, it should always depend on associated table {:?} {:?}", object.id, table_object_id);
-                }
-                
+                let schema = object.schema()?;
+                let table = object.table()?;
+                let constraint_name = object.name()?;
+                let table_id = format!("{}.{}", schema, table);
                 let drop_constraint_sql = format!("alter table {table_id} drop constraint {constraint_name};",
-                    table_id=table_object_id,
+                    table_id=table_id,
                     constraint_name=constraint_name
                 );
 
@@ -185,6 +168,18 @@ fn drop_object(
             DatabaseObjectType::Role => {
                 let sql = format!("drop role {}", object.id);
                 pg_client.batch_execute(&sql)?;
+            },
+            DatabaseObjectType::Trigger => {
+                let schema = object.schema()?;
+                let table = object.table()?;
+                let trigger_name = object.name()?;
+                let table_id = format!("{}.{}", schema, table);
+                let drop_trigger_sql = format!("drop trigger {trigger_name} ON {table_id};",
+                    table_id=table_id,
+                    trigger_name=trigger_name
+                );
+
+                pg_client.batch_execute(&drop_trigger_sql)?;
             }
         };
     }
@@ -313,7 +308,8 @@ fn select_db_objects(
     let sql = "select * from pgfine_objects;";
     let rows = pg_client.query(sql, &[])?;
     for row in rows {
-        let object = DatabaseObject::from_db_row(&row)?;
+        let object = DatabaseObject::from_db_row(&row)
+            .context("failed to parse pgfine_objects row")?;
         result.insert(object.id.clone(), object);
     }
     return Ok(result);
