@@ -269,9 +269,9 @@ At the current stage pgfine is not the best thing in the world. You might also w
 
 - [x] support for circular constraints (by adding `./pgfine/constraints`)
 - [x] more types of database objects (roles, triggers,?)
-- [ ] drop roles on `pgfine drop`
+- [x] drop roles on `pgfine drop`
 - [ ] support tls
-- [ ] ability to override dependencies in comment section when standard resolution fails
+- [x] ability to override dependencies in comment section when standard resolution fails
 - [x] implement `PGFINE_DIR`
 - [x] explain errors better in `database::migrate`, `database::drop`, `project::init`
 - [x] document timeouts
