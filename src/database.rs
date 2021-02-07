@@ -221,8 +221,18 @@ fn drop_object(
                 pg_client.batch_execute(&drop_constraint_sql)?;
             },
             DatabaseObjectType::Role => {
-                let sql = format!("drop role {}", object.id);
+                let pgfine_role = utils::get_role_name()?;
+                let sql = format!("
+                    grant {drop_role_name} to {pgfine_role};
+                    reassign owned by {drop_role_name} to {pgfine_role};
+                    drop owned by {drop_role_name};
+                    drop role {drop_role_name};",
+                    drop_role_name=object.id,
+                    pgfine_role=pgfine_role,
+                );
+                
                 pg_client.batch_execute(&sql)?;
+                return Ok(());
             },
             DatabaseObjectType::Trigger => {
                 let schema = object.schema()?;

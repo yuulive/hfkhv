@@ -77,6 +77,7 @@ This will create directory for storing all pgfine project data:
 ├── migrations
 ├── roles
 ├── tables
+├── schemas
 ├── constraints
 ├── triggers
 └── views
