@@ -143,3 +143,13 @@ pub fn contains_whole_word_ci(text: &str, search_term: &str) -> bool {
     return contains_whole_word(&text_lower, &search_term_lower);
 }
 
+pub fn validate_environment() -> anyhow::Result<()> {
+    let err_msg = "all pgfine variables are mandatory to avoid mixed environments";
+    read_env_var("PGFINE_CONNECTION_STRING").context(err_msg)?;
+    read_env_var("PGFINE_ADMIN_CONNECTION_STRING").context(err_msg)?;
+    read_env_var("PGFINE_DIR").context(err_msg)?;
+    read_env_var("PGFINE_ROLE_PREFIX").context(err_msg)?;
+    read_env_var("PGFINE_ROOT_CERT").context(err_msg)?;
+    return Ok(());
+}
+

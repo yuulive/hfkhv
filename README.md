@@ -25,6 +25,7 @@ cargo install --path ./pgfine
 
 ```bash
 # Connection strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+# no need to provide sslmode parameter
 
 # credentials to connect to target db to perform updates and migrations
 export PGFINE_CONNECTION_STRING="..."
@@ -40,6 +41,10 @@ export PGFINE_DIR="./pgfine"
 # role names should be referenced like "{pgfine_role_prefix}role_name" in all the scripts.
 # if you plan to use global roles you should create them manualy or in ./pgfine/create/ scripts
 export PGFINE_ROLE_PREFIX="prod_"
+
+# path to root certificate. No tls mode will be attempted if this is set to an empty string.
+# https://www.postgresql.org/docs/current/ssl-tcp.html
+export PGFINE_ROOT_CERT=""
 ```
 
 Environment variables need to be activated when using `pgfine`. You can do this by running:
@@ -270,7 +275,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [x] support for circular constraints (by adding `./pgfine/constraints`)
 - [x] more types of database objects (roles, triggers,?)
 - [x] drop roles on `pgfine drop`
-- [ ] support tls
+- [x] support tls
 - [x] ability to override dependencies in comment section when standard resolution fails
 - [x] implement `PGFINE_DIR`
 - [x] explain errors better in `database::migrate`, `database::drop`, `project::init`
@@ -297,3 +302,5 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
+- [ ] client TLS cert
+

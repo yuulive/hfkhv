@@ -35,13 +35,16 @@ fn main() -> anyhow::Result<()> {
     let matches = clap.clone().get_matches();
     
     match matches.subcommand() {
-        Some(("init", subcommand_matches)) => { 
+        Some(("init", subcommand_matches)) => {
+            utils::validate_environment()?;
             subcommand_init(subcommand_matches)?;
         },
-        Some(("migrate", subcommand_matches)) => { 
+        Some(("migrate", subcommand_matches)) => {
+            utils::validate_environment()?;
             subcommand_migrate(subcommand_matches)?;
         },
-        Some(("drop", subcommand_matches)) => { 
+        Some(("drop", subcommand_matches)) => {
+            utils::validate_environment()?;
             subcommand_drop(subcommand_matches)?;
         },
         _ => {
