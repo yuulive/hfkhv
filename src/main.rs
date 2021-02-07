@@ -1,6 +1,4 @@
 #[macro_use] extern crate anyhow;
-extern crate postgres;
-extern crate md5;
 
 use clap;
 pub mod project;

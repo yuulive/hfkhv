@@ -2,11 +2,16 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::LinkedList;
+use std::ffi::OsStr;
+use std::fs;
 use std::iter::FromIterator;
 use std::ops::Sub;
+use std::path::PathBuf;
 use anyhow;
 use anyhow::Context;
 use postgres;
+use postgres_native_tls;
+use native_tls;
 use crate::project::DatabaseProject;
 use crate::project::DatabaseObject;
 use crate::project::DatabaseObjectType;
@@ -14,25 +19,75 @@ use crate::utils;
 
 
 
+fn get_pg_client_from_connection_string(connection_string: &str) -> anyhow::Result<postgres::Client> {
+    
+    let root_cert_path = utils::read_env_var("PGFINE_ROOT_CERT")?;
+    if root_cert_path == "" {
+        let pg_client = postgres::Client::connect(&connection_string, postgres::NoTls)
+            .context("failed to connect to db using no TLS")?;
+        return Ok(pg_client);
+    }
+
+
+    let root_cert_path_buf = PathBuf::from(root_cert_path);
+    let root_cert_b = fs::read(&root_cert_path_buf)
+        .context(format!("failed to read cert file {:?}", root_cert_path_buf))?;
+
+    let root_cert;
+    
+    match root_cert_path_buf.extension().and_then(OsStr::to_str) {
+        Some("pem") => {
+            root_cert = native_tls::Certificate::from_pem(&root_cert_b)?;
+        },
+        Some("der") => {
+            root_cert = native_tls::Certificate::from_der(&root_cert_b)?;
+        },
+        _ => {
+            match native_tls::Certificate::from_pem(&root_cert_b) {
+                Ok(pem_cert) => {
+                    root_cert = pem_cert;
+                }
+                Err(pem_err) => {
+                    match native_tls::Certificate::from_der(&root_cert_b) {
+                        Ok(der_cert) => {
+                            root_cert = der_cert;
+                        }
+                        Err(der_err) => {
+                            return Err(pem_err)
+                            .context(der_err)
+                            .context(format!("could not parse cert file neither as pem nor der format {:?}", root_cert_path_buf));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    let connector = native_tls::TlsConnector::builder()
+        .add_root_certificate(root_cert)
+        .build()
+        .context("TLS configuration error")?;
+
+    let connector = postgres_native_tls::MakeTlsConnector::new(connector);
+    
+    let pg_client = postgres::Client::connect(&connection_string, connector)
+        .context("failed to connect to db using TLS")?;
+    return Ok(pg_client);
+}
+
 fn get_admin_pg_client() -> anyhow::Result<postgres::Client> {
     let admin_connection_string = utils::read_env_var("PGFINE_ADMIN_CONNECTION_STRING")
         .context("get_admin_pg_client error: failed to get connection string from env PGFINE_ADMIN_CONNECTION_STRING")?;
-    
-    // FIXME match tlsMode
-    let admin_pg_client = postgres::Client::connect(&admin_connection_string, postgres::NoTls)
-        .context("get_admin_pg_client error: failed to connect to db using PGFINE_ADMIN_CONNECTION_STRING")?;
-
+    let admin_pg_client = get_pg_client_from_connection_string(&admin_connection_string)
+        .context("get_admin_pg_client error: failed to connect to database using PGFINE_ADMIN_CONNECTION_STRING")?;
     return Ok(admin_pg_client);
 }
 
 fn get_pg_client() -> anyhow::Result<postgres::Client> {
     let connection_string = utils::read_env_var("PGFINE_CONNECTION_STRING")
-        .context("get_pg_client error: failed to get connection string from env PGFINE_CONNECTION_STRING")?;
-    
-    // FIXME match tlsMode
-    let pg_client = postgres::Client::connect(&connection_string, postgres::NoTls)
-        .context("get_admin_pg_client error: failed to connect to db using PGFINE_CONNECTION_STRING")?;
-
+        .context("get_admin_pg_client error: failed to get connection string from env PGFINE_CONNECTION_STRING")?;
+    let pg_client = get_pg_client_from_connection_string(&connection_string)
+        .context("get_admin_pg_client error: failed to connect to database using PGFINE_CONNECTION_STRING")?;
     return Ok(pg_client);
 }
 
@@ -609,24 +664,39 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
 
 
 pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
-    let mut pg_client = get_pg_client()
-        .context("drop error: failed to connect")?;
 
     let mut pg_admin_client = get_admin_pg_client()
         .context("drop error: failed to connect as admin")?;
 
-    let db_objects = select_db_objects(&mut pg_client)?;
-    for (db_object_id, db_object) in db_objects.iter() {
-        if db_object.object_type == DatabaseObjectType::Role {
-            force_drop_role_if_exists(&mut pg_client, db_object)
-                .context(format!("drop error: failed to drop role, drop it manually or remove it from pgfine_objects table {:?}", db_object_id))?;
-        }
-    }
 
-    for (db_object_id, db_object) in database_project.objects.iter() {
-        if db_object.object_type == DatabaseObjectType::Role {
-            force_drop_role_if_exists(&mut pg_client, db_object)
-                .context(format!("drop error: failed to drop role, drop it manually or remove it from the project {:?}", db_object_id))?;
+    let pg_client_result = get_pg_client();
+
+    match pg_client_result {
+        Ok(mut pg_client) => {
+            let db_objects = select_db_objects(&mut pg_client)?;
+            for (db_object_id, db_object) in db_objects.iter() {
+                if db_object.object_type == DatabaseObjectType::Role {
+                    force_drop_role_if_exists(&mut pg_client, db_object)
+                        .context(format!("drop error: failed to drop role, drop it manually or remove it from pgfine_objects table {:?}", db_object_id))?;
+                }
+            }
+        
+            for (p_object_id, p_object) in database_project.objects.iter() {
+                if p_object.object_type == DatabaseObjectType::Role {
+                    force_drop_role_if_exists(&mut pg_client, p_object)
+                        .context(format!("drop error: failed to drop role, drop it manually or remove it from the project {:?}", p_object_id))?;
+                }
+            }
+
+            pg_client.close()
+                .context("drop error: could not properly close connection before dropping database, try again?")?;
+        },
+        Err(err) => {
+            let exists = exists_database(&mut pg_admin_client)?;
+            if exists {
+                return Err(err)
+                    .context("drop error: database exists but could not get connection to it, check PGFINE_CONNECTION_STRING");
+            }
         }
     }
 
@@ -634,8 +704,20 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
         println!("drop database: executing {:?}", path_buf);
         let prepared_script = prepare_admin_script(&script)
             .context(format!("drop error: failed to prepare drop script {:?}", path_buf))?;
-            pg_admin_client.batch_execute(&prepared_script)
+        pg_admin_client.batch_execute(&prepared_script)
             .context(format!("drop error: failed to execute drop script: {:?}", path_buf))?;
+    }
+
+
+    // check existing roles
+    for (p_object_id, p_object) in database_project.objects.iter() {
+        if p_object.object_type == DatabaseObjectType::Role {
+            let role_exists = exists_object(&mut pg_admin_client, p_object)
+                .context(format!("drop error: failed to check if role exists {:?}", p_object_id))?;
+            if role_exists {
+                println!("role still exists after executing all drop scripts, drop it manually or remove it from the project {:?}", p_object_id);
+            }
+        }
     }
 
     return Ok(());
