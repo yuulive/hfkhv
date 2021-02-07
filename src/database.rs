@@ -180,7 +180,13 @@ fn exists_object(
                 join pg_class c on c.oid = t.tgrelid
                 join pg_namespace n on n.oid = c.relnamespace
                 where lower(n.nspname || '.' || c.relname || '.' || t.tgname) = lower($1)
-            );"
+            );",
+        DatabaseObjectType::Schema => "
+            select exists (
+                select 1
+                from pg_namespace
+                where nspname = $1
+            );",
     };
     let row = pg_client.query_one(sql, &[&object.id])
         .context(format!("exists_object error quering {:?} {:?}", object.object_type, object.id))?;
@@ -201,11 +207,11 @@ fn drop_object(
             DatabaseObjectType::Table => bail!("attempting to drop a table {:?}, \
                 tables should be dropped manually or using migration scripts", object.id),
             DatabaseObjectType::View => {
-                let sql = format!("drop view {}", object.id);
+                let sql = format!("drop view {};", object.id);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Function => {
-                let sql = format!("drop function {}", object.id);
+                let sql = format!("drop function {};", object.id);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Constraint => {
@@ -245,7 +251,11 @@ fn drop_object(
                 );
 
                 pg_client.batch_execute(&drop_trigger_sql)?;
-            }
+            },
+            DatabaseObjectType::Schema => {
+                let sql = format!("drop schema {};", object.id);
+                pg_client.batch_execute(&sql)?;
+            },
         };
     }
 
@@ -461,6 +471,8 @@ fn update_objects(
             if p_object.md5 != db_object.md5 {
                 if db_object.object_type == DatabaseObjectType::Table {
                     dirty_tables_set.insert(db_object_id.clone());
+                } else if db_object.object_type == DatabaseObjectType::Schema {
+                    continue; // we assume that all schema scripts are "create schema <name>" and should not be altered
                 } else {
                     drop_set.insert(db_object_id.clone());
                 }
@@ -469,14 +481,14 @@ fn update_objects(
     }
 
 
-    // drop p_objects which are missing in pgfine_objects and still exist in database
+    // drop p_objects which are missing in pgfine_objects and still exist in database (except schemas)
     for (p_object_id, p_object) in database_project.objects.iter() {
         if db_objects.contains_key(p_object_id) {
             continue;
         }
 
         let exists = exists_object(pg_client, p_object)?;
-        if exists {
+        if exists && p_object.object_type != DatabaseObjectType::Schema {
             drop_set.insert(p_object_id.clone());
         }
     }

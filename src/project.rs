@@ -98,6 +98,12 @@ DROP ROLE IF EXISTS \"{role_name}\";
     return (filename, content);
 }
 
+fn get_default_schema_script() -> (String, String) {
+    let filename = String::from("public.sql");
+    let content = "create schema public;".into();
+    return (filename, content);
+}
+
 pub fn init() -> anyhow::Result<()> {
     
     let project_path = get_project_path()
@@ -118,6 +124,7 @@ pub fn init() -> anyhow::Result<()> {
     fs::create_dir(project_path.join("migrations"))?;
     fs::create_dir(project_path.join("constraints"))?;
     fs::create_dir(project_path.join("triggers"))?;
+    fs::create_dir(project_path.join("schemas"))?;
 
     {
         let (filename, content) = get_create_script_00();
@@ -140,6 +147,12 @@ pub fn init() -> anyhow::Result<()> {
     {
         let (filename, content) = get_drop_script_01();
         let path_buf = project_path.join("drop").join(filename);
+        utils::write_file(&path_buf, &content)?;
+    }
+
+    {
+        let (filename, content) = get_default_schema_script();
+        let path_buf = project_path.join("schemas").join(filename);
         utils::write_file(&path_buf, &content)?;
     }
 
@@ -183,6 +196,12 @@ fn validate_object_id(id: &str, object_type: &DatabaseObjectType) -> anyhow::Res
             let id_parts: Vec<&str> = id.split('.').collect();
             if id_parts.len() != 1 {
                 bail!("role object id should not contain dots {:?}", id);
+            }
+        },
+        DatabaseObjectType::Schema => {
+            let id_parts: Vec<&str> = id.split('.').collect();
+            if id_parts.len() != 1 {
+                bail!("schema object id should not contain dots {:?}", id);
             }
         },
     }
@@ -273,6 +292,9 @@ fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (
     let path_buf = project_path.join("triggers");
     load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Trigger)?;
 
+    let path_buf = project_path.join("schemas");
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Schema)?;
+
     return Ok(result);
 }
 
@@ -285,8 +307,8 @@ fn get_search_term<'t>(
         DatabaseObjectType::Function |
         DatabaseObjectType::Table |
         DatabaseObjectType::View => {
-            let schema = id_part(object_id, object_type, 0)?;
-            let name = id_part(object_id, object_type, 1)?;
+            let schema = get_id_part(object_id, object_type, 0)?;
+            let name = get_id_part(object_id, object_type, 1)?;
             if search_schemas.contains(schema) {
                 return Ok(Some(name));
             } else {
@@ -296,15 +318,53 @@ fn get_search_term<'t>(
         DatabaseObjectType::Constraint |
         DatabaseObjectType::Trigger => return Ok(None),
         DatabaseObjectType::Role => return Ok(Some(object_id)),
+        DatabaseObjectType::Schema => bail!("schema dependencies should be derived from object ids"),
     };
 }
 
+fn calc_required_by_for_schema(
+    object_id: &str,
+    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
+) -> anyhow::Result<HashSet<String>> {
+    let mut result = HashSet::new();
+
+    for (required_by_object_id, (object_type, _, _)) in objects_info {
+
+        let schema_opt = match object_type {
+            DatabaseObjectType::Constraint => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::Trigger => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::Table => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::View => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::Function => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::Role => None,
+            DatabaseObjectType::Schema => None,
+        };
+
+        if schema_opt.is_none() {
+            continue;
+        }
+
+        let schema = schema_opt.unwrap()?;
+
+        if schema == object_id {
+            result.insert(required_by_object_id.clone());
+        }
+    }
+
+    return Ok(result);
+}
+
 fn calc_required_by_for_object(
-    object_id: &str, 
+    object_id: &str,
     objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
     search_schemas: &HashSet<String>
 ) -> anyhow::Result<HashSet<String>> {
     let object_type = objects_info[object_id].0;
+    
+    if object_type == DatabaseObjectType::Schema {
+        return calc_required_by_for_schema(object_id, objects_info);
+    }
+    
     let mut result = HashSet::new();
     let search_term_opt = get_search_term(
         object_id,
@@ -455,6 +515,7 @@ pub enum DatabaseObjectType {
     Constraint,
     Role,
     Trigger,
+    Schema,
 }
 
 impl From<DatabaseObjectType> for String {
@@ -466,6 +527,7 @@ impl From<DatabaseObjectType> for String {
             DatabaseObjectType::Constraint => "constraint".into(),
             DatabaseObjectType::Role => "role".into(),
             DatabaseObjectType::Trigger => "trigger".into(),
+            DatabaseObjectType::Schema => "schema".into(),
         }
     }
 }
@@ -481,6 +543,7 @@ impl FromStr for DatabaseObjectType {
             "constraint" => DatabaseObjectType::Constraint,
             "role" => DatabaseObjectType::Role,
             "trigger" => DatabaseObjectType::Trigger,
+            "schema" => DatabaseObjectType::Schema,
             _ => bail!("could not convert object type from {:?}", s),
         };
         return Ok(object_type);
@@ -498,10 +561,22 @@ pub struct DatabaseObject {
     pub required_by: HashSet<String>,
 }
 
-fn id_part<'t>(id: &'t str, object_type: &'t DatabaseObjectType, i: usize) -> anyhow::Result<&'t str> {
+fn get_id_part<'t>(id: &'t str, object_type: &'t DatabaseObjectType, i: usize) -> anyhow::Result<&'t str> {
     validate_object_id(id, object_type)?;
     let id_parts: Vec<&str> = id.split('.').collect();
     return Ok(id_parts[i]);
+}
+
+fn get_schema<'t>(id: &'t str, object_type: &'t DatabaseObjectType) -> anyhow::Result<&'t str> {
+    match object_type {
+        DatabaseObjectType::Constraint => get_id_part(id, object_type, 0),
+        DatabaseObjectType::Trigger => get_id_part(id, object_type, 0),
+        DatabaseObjectType::Table => get_id_part(id, object_type, 0),
+        DatabaseObjectType::View => get_id_part(id, object_type, 0),
+        DatabaseObjectType::Function => get_id_part(id, object_type, 0),
+        DatabaseObjectType::Role => bail!("role object id is not associated with schema {:?}", id),
+        DatabaseObjectType::Schema => bail!("schema object id is not associated with another schema {:?}", id),
+    }
 }
 
 
@@ -509,20 +584,12 @@ impl DatabaseObject {
 
 
     fn id_part(&self, i: usize) -> anyhow::Result<&str> {
-        return id_part(&self.id, &self.object_type, i);
+        return get_id_part(&self.id, &self.object_type, i);
     }
 
     pub fn schema(&self) -> anyhow::Result<&str> {
-        match self.object_type {
-            DatabaseObjectType::Constraint => self.id_part(0),
-            DatabaseObjectType::Trigger => self.id_part(0),
-            DatabaseObjectType::Table => self.id_part(0),
-            DatabaseObjectType::View => self.id_part(0),
-            DatabaseObjectType::Function => self.id_part(0),
-            DatabaseObjectType::Role => bail!("role object id is not associated with schema {:?}", self.id),
-        }
+        return get_schema(&self.id, &self.object_type);
     }
-
 
     pub fn table(&self) -> anyhow::Result<&str> {
         match self.object_type {
@@ -532,6 +599,7 @@ impl DatabaseObject {
             DatabaseObjectType::View => bail!("view object id is not associated with table {:?}", self.id),
             DatabaseObjectType::Function => bail!("function object id is not associated with table {:?}", self.id),
             DatabaseObjectType::Role => bail!("role object id is not associated with table {:?}", self.id),
+            DatabaseObjectType::Schema => bail!("schema object id is not associated with table {:?}", self.id),
         }
     }
 
@@ -543,6 +611,7 @@ impl DatabaseObject {
             DatabaseObjectType::View => self.id_part(1),
             DatabaseObjectType::Function => self.id_part(1),
             DatabaseObjectType::Role => self.id_part(0),
+            DatabaseObjectType::Schema => self.id_part(0),
         }
     }
 

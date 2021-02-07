@@ -78,6 +78,7 @@ This will create directory for storing all pgfine project data:
 ├── roles
 ├── tables
 ├── schemas
+│   └── public.sql
 ├── constraints
 ├── triggers
 └── views
@@ -244,6 +245,9 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
 - empty string is the name of the first migration (inserted if no migrations exist)
 - `{pgfine_role_prefix}` text should not be used for other porpuses as for database-role prefix in your scripts.
+- no md5 comparison is done for schema objects. It is assumed that schema script should always be "create schema schema_name;"
+- default drop database scrip assumes postgres v13, if you use lower version you should add script to drop connections.
+
 
 # Alternatives
 
