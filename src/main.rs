@@ -9,6 +9,7 @@ pub mod utils;
 fn main() -> anyhow::Result<()> {
 
     let about = format!("{}
+
 ENVIRONMENT VARIABLES:
     PGFINE_DIR                      project location
     PGFINE_CONNECTION_STRING        connection string for target database
