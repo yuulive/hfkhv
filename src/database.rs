@@ -323,6 +323,21 @@ fn force_drop_role_if_exists(
     return Ok(());
 }
 
+fn exists_pgfine_object(
+    pg_client: &mut postgres::Client,
+    object_id: &str,
+) -> anyhow::Result<bool> {
+    let sql = "
+        select exists (
+            select 1
+            from pgfine_objects
+            where po_id = $1
+        );";
+    
+    let row = pg_client.query_one(sql, &[&object_id])?;
+    let result = row.try_get(0)?;
+    return Ok(result);
+}
 
 fn create_if_missing(
     pg_client: &mut postgres::Client,
@@ -330,6 +345,11 @@ fn create_if_missing(
 ) -> anyhow::Result<()> {
     let exists = exists_object(pg_client, object)?;
     if exists {
+        let pgfine_exists = exists_pgfine_object(pg_client, &object.id)?;
+        if !pgfine_exists {
+            println!("create missing pgfine_objects record {:?} {:?}", object.object_type, object.id);
+            update_pgfine_object(pg_client, &object)?;
+        }
         return Ok(());
     }
     println!("create {:?} {:?}", object.object_type, object.id);
