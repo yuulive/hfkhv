@@ -492,7 +492,8 @@ fn update_objects(
                 if db_object.object_type == DatabaseObjectType::Table {
                     dirty_tables_set.insert(db_object_id.clone());
                 } else if db_object.object_type == DatabaseObjectType::Schema {
-                    continue; // we assume that all schema scripts are "create schema <name>" and should not be altered
+                    println!("schema has changed but won't be updated, to alter schema you should use migrations {:?}", db_object_id);
+                    continue;
                 } else {
                     drop_set.insert(db_object_id.clone());
                 }
