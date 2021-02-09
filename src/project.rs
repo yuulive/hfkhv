@@ -125,6 +125,7 @@ pub fn init() -> anyhow::Result<()> {
     fs::create_dir(project_path.join("constraints"))?;
     fs::create_dir(project_path.join("triggers"))?;
     fs::create_dir(project_path.join("schemas"))?;
+    fs::create_dir(project_path.join("policies"))?;
 
     {
         let (filename, content) = get_create_script_00();
@@ -172,6 +173,12 @@ fn validate_object_id(id: &str, object_type: &DatabaseObjectType) -> anyhow::Res
             let id_parts: Vec<&str> = id.split('.').collect();
             if id_parts.len() != 3 {
                 bail!("trigger object id format shoud be <schema>.<table>.<name> {:?}", id);
+            }
+        },
+        DatabaseObjectType::Policy => {
+            let id_parts: Vec<&str> = id.split('.').collect();
+            if id_parts.len() != 3 {
+                bail!("policy object id format shoud be <schema>.<table>.<name> {:?}", id);
             }
         },
         DatabaseObjectType::Table => {
@@ -295,6 +302,9 @@ fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (
     let path_buf = project_path.join("schemas");
     load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Schema)?;
 
+    let path_buf = project_path.join("policies");
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Policy)?;
+
     return Ok(result);
 }
 
@@ -315,6 +325,7 @@ fn get_search_term<'t>(
                 return Ok(Some(object_id));
             }
         },
+        DatabaseObjectType::Policy |
         DatabaseObjectType::Constraint |
         DatabaseObjectType::Trigger => return Ok(None),
         DatabaseObjectType::Role => return Ok(Some(object_id)),
@@ -333,6 +344,7 @@ fn calc_required_by_for_schema(
         let schema_opt = match object_type {
             DatabaseObjectType::Constraint => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::Trigger => Some(get_id_part(required_by_object_id, object_type, 0)),
+            DatabaseObjectType::Policy => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::Table => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::View => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::Function => Some(get_id_part(required_by_object_id, object_type, 0)),
@@ -516,6 +528,7 @@ pub enum DatabaseObjectType {
     Role,
     Trigger,
     Schema,
+    Policy,
 }
 
 impl From<DatabaseObjectType> for String {
@@ -528,6 +541,7 @@ impl From<DatabaseObjectType> for String {
             DatabaseObjectType::Role => "role".into(),
             DatabaseObjectType::Trigger => "trigger".into(),
             DatabaseObjectType::Schema => "schema".into(),
+            DatabaseObjectType::Policy => "policy".into(),
         }
     }
 }
@@ -544,6 +558,7 @@ impl FromStr for DatabaseObjectType {
             "role" => DatabaseObjectType::Role,
             "trigger" => DatabaseObjectType::Trigger,
             "schema" => DatabaseObjectType::Schema,
+            "policy" => DatabaseObjectType::Policy,
             _ => bail!("could not convert object type from {:?}", s),
         };
         return Ok(object_type);
@@ -571,6 +586,7 @@ fn get_schema<'t>(id: &'t str, object_type: &'t DatabaseObjectType) -> anyhow::R
     match object_type {
         DatabaseObjectType::Constraint => get_id_part(id, object_type, 0),
         DatabaseObjectType::Trigger => get_id_part(id, object_type, 0),
+        DatabaseObjectType::Policy => get_id_part(id, object_type, 0),
         DatabaseObjectType::Table => get_id_part(id, object_type, 0),
         DatabaseObjectType::View => get_id_part(id, object_type, 0),
         DatabaseObjectType::Function => get_id_part(id, object_type, 0),
@@ -595,6 +611,7 @@ impl DatabaseObject {
         match self.object_type {
             DatabaseObjectType::Constraint => self.id_part(1),
             DatabaseObjectType::Trigger => self.id_part(1),
+            DatabaseObjectType::Policy => self.id_part(1),
             DatabaseObjectType::Table => bail!("table object id is not associated with another table {:?}", self.id),
             DatabaseObjectType::View => bail!("view object id is not associated with table {:?}", self.id),
             DatabaseObjectType::Function => bail!("function object id is not associated with table {:?}", self.id),
@@ -607,6 +624,7 @@ impl DatabaseObject {
         match self.object_type {
             DatabaseObjectType::Constraint => self.id_part(2),
             DatabaseObjectType::Trigger => self.id_part(2),
+            DatabaseObjectType::Policy => self.id_part(2),
             DatabaseObjectType::Table => self.id_part(1),
             DatabaseObjectType::View => self.id_part(1),
             DatabaseObjectType::Function => self.id_part(1),

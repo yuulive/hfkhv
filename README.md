@@ -81,6 +81,7 @@ This will create directory for storing all pgfine project data:
 │   └── public.sql
 ├── constraints
 ├── triggers
+├── policies
 └── views
 ```
 
@@ -148,8 +149,10 @@ Database objects are:
 - views
 - triggers
 - constraints
+- policies
 - functions
 - roles 
+- schemas
 
 Filenames for database objects must be of specific format :
 - tables: `./pgfine/tables/<schema>.<name>.sql`
@@ -157,7 +160,9 @@ Filenames for database objects must be of specific format :
 - functions: : `./pgfine/functions/<schema>.<name>.sql`
 - triggers: `./pgfine/triggers/<schema>.<table>.<name>.sql`
 - constraints: `./pgfine/constraints/<schema>.<table>.<name>.sql`
+- policies: `./pgfine/policies/<schema>.<table>.<name>.sql`
 - roles: `./pgfine/roles/<name>.sql`
+- schemas: `./pgfine/schemas/<name>.sql`
 
 
 Each file contains script to create that object.
@@ -241,7 +246,7 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 - Passwords, database names and roles can only have alphanumeric characters and underscores.
 - Each script filename must uniquely identify correspoinding database object.
 - Filename information is used to track dependencies between objects using simple whole word search, assuming default `public` schema.
-- Triggers and Constraints are assumed not to have dependencies.
+- Triggers, constraints and policies are assumed to not be required by other objects (always safe to drop).
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
 - empty string is the name of the first migration (inserted if no migrations exist)
 - `{pgfine_role_prefix}` text should not be used for other porpuses as for database-role prefix in your scripts.

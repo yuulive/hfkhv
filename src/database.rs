@@ -181,6 +181,12 @@ fn exists_object(
                 join pg_namespace n on n.oid = c.relnamespace
                 where lower(n.nspname || '.' || c.relname || '.' || t.tgname) = lower($1)
             );",
+        DatabaseObjectType::Policy => "
+            select exists (
+                select 1
+                from pg_policies
+                where lower(schemaname || '.' || tablename || '.' || policyname) = lower($1)
+            );",
         DatabaseObjectType::Schema => "
             select exists (
                 select 1
@@ -251,6 +257,18 @@ fn drop_object(
                 );
 
                 pg_client.batch_execute(&drop_trigger_sql)?;
+            },
+            DatabaseObjectType::Policy => {
+                let schema = object.schema()?;
+                let table = object.table()?;
+                let policy_name = object.name()?;
+                let table_id = format!("{}.{}", schema, table);
+                let drop_policy_sql = format!("drop policy {policy_name} ON {table_id};",
+                    table_id=table_id,
+                    policy_name=policy_name
+                );
+
+                pg_client.batch_execute(&drop_policy_sql)?;
             },
             DatabaseObjectType::Schema => {
                 let sql = format!("drop schema {};", object.id);
@@ -492,6 +510,7 @@ fn update_objects(
                 if db_object.object_type == DatabaseObjectType::Table {
                     dirty_tables_set.insert(db_object_id.clone());
                 } else if db_object.object_type == DatabaseObjectType::Schema {
+                    // maybe assume repeatable script?
                     println!("schema has changed but won't be updated, to alter schema you should use migrations {:?}", db_object_id);
                     continue;
                 } else {
