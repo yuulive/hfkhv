@@ -82,6 +82,7 @@ This will create directory for storing all pgfine project data:
 ├── constraints
 ├── triggers
 ├── policies
+├── extensions
 └── views
 ```
 
@@ -132,6 +133,43 @@ pgfine migrate
 - Commit all files to version control.
 
 
+
+The table summarizes the way you should deliver changes (auto means it is enough to modify corresponding object script):
+
+Object type | Create | Drop      | Alter
+----------- | ------ | --------- | ----
+Table       | auto   | migration | migration
+View        | auto   | auto      | auto
+Function    | auto   | auto      | auto
+Constraint  | auto   | auto      | auto
+Trigger     | auto   | auto      | auto
+Policy      | auto   | auto      | auto
+Schema      | auto   | auto      | migration
+Role        | auto   | auto      | auto
+Extension   | auto   | auto      | migration
+Function    | auto   | auto      | auto
+
+
+During the update there is short time period when the policies are dropped (if needed). This might be a security issue. This should be fixed once updates are 
+applied in single transaction (needs more investigation).
+
+
+# Migration scripts
+
+Table changes can not be applied just by dropping the table and creating a new one without loosing the data. 
+Therefore these changes must be delivered using migration scripts. Table scripts in the pgfine project
+must represent the latest version of the object after applying all migration scripts.
+
+Scripts are located at `./pgfine/migrations/`. These scripts are executed in alphabetical order before 
+updating all the other database objects.
+
+If your migration depends on other database objects (a new table column associated with a function maybe)
+it is recommended to create those objects (if not exists) in the migration sctipt. This is to avoid problems with 
+old versions of databases were mentioned objects don't yet exist. In the future schema verification process will 
+be developed to show which migration scripts are broken.
+
+
+
 # Rollbacks
 
 - Restore database object scripts from previous commits
@@ -153,6 +191,7 @@ Database objects are:
 - functions
 - roles 
 - schemas
+- extensions
 
 Filenames for database objects must be of specific format :
 - tables: `./pgfine/tables/<schema>.<name>.sql`
@@ -250,7 +289,7 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
 - empty string is the name of the first migration (inserted if no migrations exist)
 - `{pgfine_role_prefix}` text should not be used for other porpuses as for database-role prefix in your scripts.
-- no md5 comparison is done for schema objects. It is assumed that schema script should always be "create schema schema_name;"
+- no md5 comparison is done for schema objects and extensions, changes should be done using migration scripts. (will attempt to drop them if script is deleted)
 - default drop database scrip assumes postgres v13, if you use lower version you should add script to drop connections.
 
 
@@ -266,6 +305,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 
 # Post 1.0.0 plan
 
+- [ ] validate if object is self referenced
 - [ ] validate table schema when hash has changed (by creating separate DB? and comparing?) before applying all other updates
 - [ ] `PGFINE_ALLOW_DROP` variable to protect production envs
 - [ ] example projects at `./example/`
@@ -279,5 +319,6 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
+
 
 

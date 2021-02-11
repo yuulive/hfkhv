@@ -193,7 +193,15 @@ fn exists_object(
                 from pg_namespace
                 where nspname = $1
             );",
+        DatabaseObjectType::Extension => "
+            select exists (
+                select 1
+                from pg_available_extensions
+                where installed_version is not null
+                and lower(name) = lower($1)
+            );"
     };
+
     let row = pg_client.query_one(sql, &[&object.id])
         .context(format!("exists_object error quering {:?} {:?}", object.object_type, object.id))?;
     let exists: bool = row.try_get(0)
@@ -274,6 +282,10 @@ fn drop_object(
                 let sql = format!("drop schema {};", object.id);
                 pg_client.batch_execute(&sql)?;
             },
+            DatabaseObjectType::Extension => {
+                let sql = format!("drop extension {};", object.id);
+                pg_client.batch_execute(&sql)?;
+            }
         };
     }
 
@@ -510,9 +522,9 @@ fn update_objects(
                 if db_object.object_type == DatabaseObjectType::Table {
                     dirty_tables_set.insert(db_object_id.clone());
                 } else if db_object.object_type == DatabaseObjectType::Schema {
-                    // maybe assume repeatable script?
-                    println!("schema has changed but won't be updated, to alter schema you should use migrations {:?}", db_object_id);
-                    continue;
+                    println!("schema script has changed but won't be updated, to alter schema you should use migrations {:?}", db_object_id);
+                } else if db_object.object_type == DatabaseObjectType::Extension {
+                    println!("extension script has changed but won't be updated, to alter extesnion you should use migrations {:?}", db_object_id);
                 } else {
                     drop_set.insert(db_object_id.clone());
                 }

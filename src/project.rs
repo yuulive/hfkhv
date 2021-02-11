@@ -126,6 +126,8 @@ pub fn init() -> anyhow::Result<()> {
     fs::create_dir(project_path.join("triggers"))?;
     fs::create_dir(project_path.join("schemas"))?;
     fs::create_dir(project_path.join("policies"))?;
+    fs::create_dir(project_path.join("extensions"))?;
+
 
     {
         let (filename, content) = get_create_script_00();
@@ -209,6 +211,12 @@ fn validate_object_id(id: &str, object_type: &DatabaseObjectType) -> anyhow::Res
             let id_parts: Vec<&str> = id.split('.').collect();
             if id_parts.len() != 1 {
                 bail!("schema object id should not contain dots {:?}", id);
+            }
+        },
+        DatabaseObjectType::Extension => {
+            let id_parts: Vec<&str> = id.split('.').collect();
+            if id_parts.len() != 1 {
+                bail!("extension object id should not contain dots {:?}", id);
             }
         },
     }
@@ -305,6 +313,9 @@ fn load_objects_info(project_path: &PathBuf) -> anyhow::Result<HashMap<String, (
     let path_buf = project_path.join("policies");
     load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Policy)?;
 
+    let path_buf = project_path.join("extensions");
+    load_objects_info_by_type(&mut result, &path_buf, &DatabaseObjectType::Extension)?;
+
     return Ok(result);
 }
 
@@ -325,6 +336,7 @@ fn get_search_term<'t>(
                 return Ok(Some(object_id));
             }
         },
+        DatabaseObjectType::Extension |
         DatabaseObjectType::Policy |
         DatabaseObjectType::Constraint |
         DatabaseObjectType::Trigger => return Ok(None),
@@ -339,7 +351,18 @@ fn calc_required_by_for_schema(
 ) -> anyhow::Result<HashSet<String>> {
     let mut result = HashSet::new();
 
-    for (required_by_object_id, (object_type, _, _)) in objects_info {
+    for (required_by_object_id, (object_type, _, script)) in objects_info {
+
+        if *object_type == DatabaseObjectType::Extension
+        || *object_type == DatabaseObjectType::Schema 
+        || *object_type == DatabaseObjectType::Role
+        {
+            let contains = utils::contains_whole_word_ci(&script, &object_id);
+            if contains {
+                result.insert(required_by_object_id.clone());
+            }
+            continue;
+        }
 
         let schema_opt = match object_type {
             DatabaseObjectType::Constraint => Some(get_id_part(required_by_object_id, object_type, 0)),
@@ -348,13 +371,10 @@ fn calc_required_by_for_schema(
             DatabaseObjectType::Table => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::View => Some(get_id_part(required_by_object_id, object_type, 0)),
             DatabaseObjectType::Function => Some(get_id_part(required_by_object_id, object_type, 0)),
-            DatabaseObjectType::Role => None,
-            DatabaseObjectType::Schema => None,
+            DatabaseObjectType::Role |
+            DatabaseObjectType::Schema |
+            DatabaseObjectType::Extension => unreachable!(),
         };
-
-        if schema_opt.is_none() {
-            continue;
-        }
 
         let schema = schema_opt.unwrap()?;
 
@@ -529,6 +549,7 @@ pub enum DatabaseObjectType {
     Trigger,
     Schema,
     Policy,
+    Extension,
 }
 
 impl From<DatabaseObjectType> for String {
@@ -542,6 +563,7 @@ impl From<DatabaseObjectType> for String {
             DatabaseObjectType::Trigger => "trigger".into(),
             DatabaseObjectType::Schema => "schema".into(),
             DatabaseObjectType::Policy => "policy".into(),
+            DatabaseObjectType::Extension => "extension".into(),
         }
     }
 }
@@ -559,6 +581,7 @@ impl FromStr for DatabaseObjectType {
             "trigger" => DatabaseObjectType::Trigger,
             "schema" => DatabaseObjectType::Schema,
             "policy" => DatabaseObjectType::Policy,
+            "extension" => DatabaseObjectType::Extension,
             _ => bail!("could not convert object type from {:?}", s),
         };
         return Ok(object_type);
@@ -592,6 +615,7 @@ fn get_schema<'t>(id: &'t str, object_type: &'t DatabaseObjectType) -> anyhow::R
         DatabaseObjectType::Function => get_id_part(id, object_type, 0),
         DatabaseObjectType::Role => bail!("role object id is not associated with schema {:?}", id),
         DatabaseObjectType::Schema => bail!("schema object id is not associated with another schema {:?}", id),
+        DatabaseObjectType::Extension => bail!("extension object id is not associated with schema {:?}", id),
     }
 }
 
@@ -617,6 +641,7 @@ impl DatabaseObject {
             DatabaseObjectType::Function => bail!("function object id is not associated with table {:?}", self.id),
             DatabaseObjectType::Role => bail!("role object id is not associated with table {:?}", self.id),
             DatabaseObjectType::Schema => bail!("schema object id is not associated with table {:?}", self.id),
+            DatabaseObjectType::Extension => bail!("extension object id is not associated with table {:?}", self.id),
         }
     }
 
@@ -630,6 +655,7 @@ impl DatabaseObject {
             DatabaseObjectType::Function => self.id_part(1),
             DatabaseObjectType::Role => self.id_part(0),
             DatabaseObjectType::Schema => self.id_part(0),
+            DatabaseObjectType::Extension => self.id_part(0),
         }
     }
 
