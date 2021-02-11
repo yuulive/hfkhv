@@ -202,6 +202,7 @@ Filenames for database objects must be of specific format :
 - policies: `./pgfine/policies/<schema>.<table>.<name>.sql`
 - roles: `./pgfine/roles/<name>.sql`
 - schemas: `./pgfine/schemas/<name>.sql`
+- extensions: `./pgfine/extensions/<name>.sql`
 
 
 Each file contains script to create that object.
