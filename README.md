@@ -284,7 +284,7 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 # Assumptions
 
 - Passwords, database names and roles can only have alphanumeric characters and underscores.
-- Each script filename must uniquely identify correspoinding database object.
+- Each script filename must uniquely identify correspoinding database object. This means that it is not possible to have both `pgcrypto` extension and `pgcrypto` schema in the project.
 - Filename information is used to track dependencies between objects using simple whole word search, assuming default `public` schema.
 - Triggers, constraints and policies are assumed to not be required by other objects (always safe to drop).
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
@@ -320,6 +320,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
+- [ ] object id includes type (according to dirrectory)
 
 
 

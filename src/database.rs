@@ -296,6 +296,7 @@ fn drop_object(
 fn drop_object_with_deps(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject,
+    database_project: &DatabaseProject,
     objects: &HashMap<String, DatabaseObject>,
     dropped: &mut HashSet<String>,
     visited: &mut HashSet<String>,
@@ -310,9 +311,31 @@ fn drop_object_with_deps(
     visited.insert(object.id.clone());
 
     for dep_id in object.required_by.iter() {
-        let dep = objects.get(dep_id)
-            .ok_or(anyhow!("object cannot be dropped because it depends on another object which cannot be droped {:?} {:?}", object.id, dep_id))?;
-        drop_object_with_deps(pg_client, &dep, &objects, dropped, visited)?;
+        if let Some(dep) = objects.get(dep_id) {
+            drop_object_with_deps(
+                pg_client, 
+                &dep,
+                &database_project,
+                &objects,
+                dropped,
+                visited
+            )?;
+
+        } else if let Some(dep) = database_project.objects.get(dep_id) {
+            drop_object_with_deps(
+                pg_client, 
+                &dep,
+                &database_project,
+                &objects,
+                dropped,
+                visited
+            )?;
+
+        } else {
+            // FIXME required_by should contain object type so that it could be checked if exists or dropped
+            bail!("object cannot be dropped because it does not \
+                exist neither in pgfine_objects nor database project {:?} {:?}", object.id, dep_id);
+        }
     }
 
     drop_object(pg_client, &object)?;
@@ -593,8 +616,15 @@ fn update_objects(
                 continue;
             }
             
+            let drop_result = drop_object_with_deps(
+                pg_client, 
+                &object, 
+                &database_project,
+                &db_objects, 
+                &mut dropped,
+                &mut visited
+            );
 
-            let drop_result = drop_object_with_deps(pg_client, &object, &db_objects, &mut dropped, &mut visited);
             if drop_result.is_err() {
                 println!("failed to drop {:?} {:?}", object.object_type, object.id);
                 last_error = drop_result.err();
