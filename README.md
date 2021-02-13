@@ -83,6 +83,7 @@ This will create directory for storing all pgfine project data:
 ├── triggers
 ├── policies
 ├── extensions
+├── types
 └── views
 ```
 
@@ -147,6 +148,7 @@ Policy      | auto   | auto      | auto
 Schema      | auto   | auto      | migration
 Role        | auto   | auto      | auto
 Extension   | auto   | auto      | migration
+Type        | auto   | auto      | migration
 Function    | auto   | auto      | auto
 
 
@@ -192,6 +194,7 @@ Database objects are:
 - roles 
 - schemas
 - extensions
+- types
 
 Filenames for database objects must be of specific format :
 - tables: `./pgfine/tables/<schema>.<name>.sql`
@@ -203,6 +206,7 @@ Filenames for database objects must be of specific format :
 - roles: `./pgfine/roles/<name>.sql`
 - schemas: `./pgfine/schemas/<name>.sql`
 - extensions: `./pgfine/extensions/<name>.sql`
+- types: `./pgfine/types/<schema>.<name>.sql`
 
 
 Each file contains script to create that object.
@@ -290,7 +294,7 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
 - empty string is the name of the first migration (inserted if no migrations exist)
 - `{pgfine_role_prefix}` text should not be used for other porpuses as for database-role prefix in your scripts.
-- no md5 comparison is done for schema objects and extensions, changes should be done using migration scripts. (will attempt to drop them if script is deleted)
+- no md5 comparison is done for schemas, types and extensions objects, changes should be done using migration scripts. (will attempt to drop them if script is deleted)
 - default drop database scrip assumes postgres v13, if you use lower version you should add script to drop connections.
 
 
@@ -321,6 +325,9 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
 - [ ] object id includes type (according to dirrectory)
+- [ ] alter function -> drop table? -> drop function -> create function -> create table
+- [ ] user defined drop scripts
+
 
 
 
