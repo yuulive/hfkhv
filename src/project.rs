@@ -43,7 +43,7 @@ fn get_create_script_00() -> (String, String) {
 CREATE ROLE \"{role_name}\"
 WITH
 LOGIN PASSWORD '{password}'
-CREATEROLE;
+SUPERUSER;
 ".into();
     return (filename, content);
 }
