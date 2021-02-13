@@ -327,7 +327,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] object id includes type (according to dirrectory)
 - [ ] alter function -> drop table? -> drop function -> create function -> create table
 - [ ] user defined drop scripts
-
+- [ ] attempt do to drop without deps
 
 
 
