@@ -347,10 +347,10 @@ fn get_search_term<'t>(
                 return Ok(Some(object_id));
             }
         },
-        DatabaseObjectType::Extension |
         DatabaseObjectType::Policy |
         DatabaseObjectType::Constraint |
         DatabaseObjectType::Trigger => return Ok(None),
+        DatabaseObjectType::Extension |
         DatabaseObjectType::Role => return Ok(Some(object_id)),
         DatabaseObjectType::Schema => bail!("schema dependencies should be derived from object ids"),
     };
