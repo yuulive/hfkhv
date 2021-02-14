@@ -362,9 +362,8 @@ fn drop_object_with_deps(
             )?;
 
         } else {
-            // FIXME required_by should contain object type so that it could be checked if exists or dropped
-            bail!("object cannot be dropped because it does not \
-                exist neither in pgfine_objects nor database project {:?} {:?}", object.id, dep_id);
+            drop_object(pg_client, dep_id)
+                .context(format!("undefined dependency could not be dropped {:?} {:?}", object.id, dep_id))?;
         }
     }
 
@@ -432,8 +431,9 @@ fn create_if_missing(
         let pgfine_exists = exists_pgfine_object(pg_client, &object.id)?;
         if !pgfine_exists {
             println!("create missing pgfine_objects record {:?}", object.id);
-            update_pgfine_object(pg_client, &object)?;
         }
+        // always update because required_by could have changed
+        update_pgfine_object(pg_client, &object)?;
         return Ok(());
     }
     println!("create {:?}", object.id);

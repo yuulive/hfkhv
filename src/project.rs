@@ -370,34 +370,22 @@ fn calc_required_by_for_schema(
     objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
 ) -> anyhow::Result<HashSet<String>> {
     let mut result = HashSet::new();
-
+    let schema = get_name(object_id)?;
     for (required_by_object_id, (object_type, _, script)) in objects_info {
 
         if *object_type == DatabaseObjectType::Extension
         || *object_type == DatabaseObjectType::Schema 
         || *object_type == DatabaseObjectType::Role
         {
-            let contains = utils::contains_whole_word_ci(&script, &object_id);
+            let contains = utils::contains_whole_word_ci(&script, &schema);
             if contains {
                 result.insert(required_by_object_id.clone());
             }
             continue;
         }
 
-        let schema = match object_type {
-            DatabaseObjectType::Constraint |
-            DatabaseObjectType::Trigger |
-            DatabaseObjectType::Policy |
-            DatabaseObjectType::Table |
-            DatabaseObjectType::View |
-            DatabaseObjectType::Type |
-            DatabaseObjectType::Function => get_id_part(required_by_object_id, 1)?,
-            DatabaseObjectType::Role |
-            DatabaseObjectType::Schema |
-            DatabaseObjectType::Extension => unreachable!(),
-        };
-
-        if schema == object_id {
+        let required_by_schema = get_schema(required_by_object_id)?;
+        if schema == required_by_schema {
             result.insert(required_by_object_id.clone());
         }
     }
