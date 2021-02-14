@@ -18,58 +18,54 @@ fn set(strings: Vec<&str>) -> HashSet<String> {
 fn test_calc_execute_order_0() -> anyhow::Result<()> {
     
     let obj_0 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_0".into(),
+        id: "table.s.obj_0".into(),
         path_buf: "s.obj_0".into(),
         script: "create s.obj_0;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_1", "s.obj_2"]),
+        depends_on: set(vec!["table.s.obj_1", "table.s.obj_2"]),
         required_by: set(vec![]),
     };
 
     let obj_1 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_1".into(),
+        id: "table.s.obj_1".into(),
         path_buf: "s.obj_1".into(),
         script: "create s.obj_1;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_2", "s.obj_3"]),
-        required_by: set(vec!["s.obj_0"]),
+        depends_on: set(vec!["table.s.obj_2", "table.s.obj_3"]),
+        required_by: set(vec!["table.s.obj_0"]),
     };
 
     let obj_2 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_2".into(),
+        id: "table.s.obj_2".into(),
         path_buf: "s.obj_2".into(),
         script: "create s.obj_2;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_3"]),
-        required_by: set(vec!["s.obj_1", "s.obj_0"]),
+        depends_on: set(vec!["table.s.obj_3"]),
+        required_by: set(vec!["table.s.obj_1", "table.s.obj_0"]),
     };
 
     let obj_3 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_3".into(),
+        id: "table.s.obj_3".into(),
         path_buf: "s.obj_3".into(),
         script: "create s.obj_3;".into(),
         md5: "asd".into(),
         depends_on: set(vec![]),
-        required_by: set(vec!["s.obj_1", "s.obj_2"]),
+        required_by: set(vec!["table.s.obj_1", "table.s.obj_2"]),
     };
 
     let mut objects: HashMap<String, DatabaseObject> = HashMap::new();
-    objects.insert("s.obj_0".into(), obj_0);
-    objects.insert("s.obj_1".into(), obj_1);
-    objects.insert("s.obj_2".into(), obj_2);
-    objects.insert("s.obj_3".into(), obj_3);
+    objects.insert(obj_0.id.clone(), obj_0);
+    objects.insert(obj_1.id.clone(), obj_1);
+    objects.insert(obj_2.id.clone(), obj_2);
+    objects.insert(obj_3.id.clone(), obj_3);
 
 
 
     let create_order_expected: Vec<String> = vec![
-        "s.obj_3".into(),
-        "s.obj_2".into(),
-        "s.obj_1".into(),
-        "s.obj_0".into(),
+        "table.s.obj_3".into(),
+        "table.s.obj_2".into(),
+        "table.s.obj_1".into(),
+        "table.s.obj_0".into(),
     ];
     let create_order_actual = calc_create_order(&objects)?;
 
@@ -79,43 +75,38 @@ fn test_calc_execute_order_0() -> anyhow::Result<()> {
 
 
 
-
 #[test]
 fn test_calc_execute_order_1() -> anyhow::Result<()> {
     
     let obj_0 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_0".into(),
+        id: "table.s.obj_0".into(),
         path_buf: "s.obj_0".into(),
         script: "create s.obj_0;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_1"]),
-        required_by: set(vec!["s.obj_3"]),
+        depends_on: set(vec!["table.s.obj_1"]),
+        required_by: set(vec!["table.s.obj_3"]),
     };
 
     let obj_1 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_1".into(),
+        id: "table.s.obj_1".into(),
         path_buf: "s.obj_1".into(),
         script: "create s.obj_1;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_2"]),
-        required_by: set(vec!["s.obj_0"]),
+        depends_on: set(vec!["table.s.obj_2"]),
+        required_by: set(vec!["table.s.obj_0"]),
     };
 
     let obj_2 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_2".into(),
+        id: "table.s.obj_2".into(),
         path_buf: "s.obj_2".into(),
         script: "create s.obj_2;".into(),
         md5: "asd".into(),
-        depends_on: set(vec!["s.obj_0"]),
-        required_by: set(vec!["s.obj_1"]),
+        depends_on: set(vec!["table.s.obj_0"]),
+        required_by: set(vec!["table.s.obj_1"]),
     };
 
     let obj_3 = DatabaseObject {
-        object_type: DatabaseObjectType::Table,
-        id: "s.obj_3".into(),
+        id: "table.s.obj_3".into(),
         path_buf: "s.obj_3".into(),
         script: "create s.obj_3;".into(),
         md5: "asd".into(),
@@ -124,10 +115,10 @@ fn test_calc_execute_order_1() -> anyhow::Result<()> {
     };
 
     let mut objects: HashMap<String, DatabaseObject> = HashMap::new();
-    objects.insert("s.obj_0".into(), obj_0);
-    objects.insert("s.obj_1".into(), obj_1);
-    objects.insert("s.obj_2".into(), obj_2);
-    objects.insert("s.obj_3".into(), obj_3);
+    objects.insert(obj_0.id.clone(), obj_0);
+    objects.insert(obj_1.id.clone(), obj_1);
+    objects.insert(obj_2.id.clone(), obj_2);
+    objects.insert(obj_3.id.clone(), obj_3);
 
 
     let execute_order_actual = calc_create_order(&objects);

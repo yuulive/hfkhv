@@ -1,7 +1,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::LinkedList;
 use std::ffi::OsStr;
 use std::fs;
 use std::iter::FromIterator;
@@ -15,6 +14,7 @@ use native_tls;
 use crate::project::DatabaseProject;
 use crate::project::DatabaseObject;
 use crate::project::DatabaseObjectType;
+use crate::project;
 use crate::utils;
 
 
@@ -99,23 +99,20 @@ fn update_pgfine_object(
     let sql = "
         insert into pgfine_objects (
             po_id,
-            po_type,
             po_md5,
             po_script,
             po_path,
             po_depends_on,
             po_required_by
         )
-        select $1, $2, $3, $4, $5, $6, $7
+        select $1, $2, $3, $4, $5, $6
         on conflict (po_id) do update set 
-            po_type = excluded.po_type,
             po_md5 = excluded.po_md5,
             po_script = excluded.po_script,
             po_path = excluded.po_path,
             po_depends_on = excluded.po_depends_on,
             po_required_by = excluded.po_required_by;";
 
-    let object_type_str: String = object.object_type.into();
     let path_str: String = object.path_buf.clone().into_os_string().to_str()
         .ok_or(anyhow!("object_id_from_path error: could not parse filename"))?
         .into();
@@ -124,8 +121,7 @@ fn update_pgfine_object(
     let required_by_vec: Vec<&String> = Vec::from_iter(&object.required_by);
 
     pg_client.execute(sql, &[
-        &object.id, 
-        &object_type_str, 
+        &object.id,
         &object.md5,
         &object.script,
         &path_str,
@@ -146,18 +142,29 @@ fn delete_pgfine_object(
 }
 
 fn exists_object(
-    pg_client: &mut postgres::Client, 
-    object: &DatabaseObject
+    pg_client: &mut postgres::Client,
+    object_id: &str
 ) -> anyhow::Result<bool> {
-    let sql = match object.object_type {
-        DatabaseObjectType::Table => "select to_regclass($1) is not null;", // pg 9.4+,
-        DatabaseObjectType::View => "select to_regclass($1) is not null;", // pg 9.4+,
+    let object_type = project::get_object_type(object_id)?;
+    let sql = match object_type {
+        DatabaseObjectType::Table => "
+            select exists (
+                select 1
+                from pg_tables
+                where lower('table' || '.' || schemaname || '.' || tablename) = lower($1)
+            )",
+        DatabaseObjectType::View => "
+            select exists (
+                select 1
+                from pg_views
+                where lower('view' || '.' || schemaname || '.' || viewname) = lower($1)
+            )",
         DatabaseObjectType::Function => "
             select exists (
                 select 1
                 from pg_proc p
                 join pg_namespace n on n.oid = p.pronamespace
-                where lower(n.nspname || '.' || p.proname) = lower($1)
+                where lower('function' || '.' || n.nspname || '.' || p.proname) = lower($1)
             );",
         DatabaseObjectType::Constraint => "
             select exists (
@@ -165,13 +172,13 @@ fn exists_object(
                 from pg_constraint c
                 join pg_class t on t.oid = c.conrelid
                 join pg_namespace n on n.oid = t.relnamespace
-                where lower(n.nspname || '.' || t.relname || '.' || c.conname) = lower($1)
+                where lower('constraint' || '.' || n.nspname || '.' || t.relname || '.' || c.conname) = lower($1)
             );",
         DatabaseObjectType::Role => "
             select exists (
                 select 1
                 from pg_roles
-                where lower(rolname) = lower($1)
+                where lower('role' || '.' || rolname) = lower($1)
             );",
         DatabaseObjectType::Trigger => "
             select exists (
@@ -179,82 +186,88 @@ fn exists_object(
                 from pg_trigger t
                 join pg_class c on c.oid = t.tgrelid
                 join pg_namespace n on n.oid = c.relnamespace
-                where lower(n.nspname || '.' || c.relname || '.' || t.tgname) = lower($1)
+                where lower('trigger' || '.' || n.nspname || '.' || c.relname || '.' || t.tgname) = lower($1)
             );",
         DatabaseObjectType::Policy => "
             select exists (
                 select 1
                 from pg_policies
-                where lower(schemaname || '.' || tablename || '.' || policyname) = lower($1)
+                where lower('policy' || '.' || schemaname || '.' || tablename || '.' || policyname) = lower($1)
             );",
         DatabaseObjectType::Schema => "
             select exists (
                 select 1
                 from pg_namespace
-                where nspname = $1
+                where lower('schema' || '.' || nspname) = lower($1)
             );",
         DatabaseObjectType::Extension => "
             select exists (
                 select 1
                 from pg_available_extensions
                 where installed_version is not null
-                and lower(name) = lower($1)
+                and lower('extension' || '.' || name) = lower($1)
             );",
         DatabaseObjectType::Type => "
             select exists (
                 select 1
                 from pg_type t
                 join pg_namespace n on n.oid = t.typnamespace
-                where lower(n.nspname || '.' || t.typname) = lower($1)
+                where lower('type' || '.' || n.nspname || '.' || t.typname) = lower($1)
             );",
     };
 
-    let row = pg_client.query_one(sql, &[&object.id])
-        .context(format!("exists_object error quering {:?} {:?}", object.object_type, object.id))?;
+    let row = pg_client.query_one(sql, &[&object_id])
+        .context(format!("exists_object error quering {:?}", object_id))?;
     let exists: bool = row.try_get(0)
-        .context(format!("exists_object error parsing {:?} {:?}", object.object_type, object.id))?;
+        .context(format!("exists_object error parsing {:?}", object_id))?;
     return Ok(exists);
 }
 
 
 fn drop_object(
     pg_client: &mut postgres::Client,
-    object: &DatabaseObject
+    object_id: &str
 ) -> anyhow::Result<()> {
-    println!("drop if exists {:?} {:?}", object.object_type, object.id);
-    let exists = exists_object(pg_client, object)?;
+    println!("drop if exists {:?}", object_id);
+    let object_type = project::get_object_type(object_id)?;
+    let exists = exists_object(pg_client, &object_id)?;
     if exists {
-        match object.object_type {
-            DatabaseObjectType::Table => bail!("attempting to drop a table {:?}, \
-                tables should be dropped manually or using migration scripts", object.id),
+        match object_type {
+            DatabaseObjectType::Table => bail!("attempting to drop a table, \
+                tables should be dropped manually or using migration scripts {:?}", object_id),
             DatabaseObjectType::View => {
-                let sql = format!("drop view {};", object.id);
+                let schema = project::get_schema(object_id)?;
+                let name = project::get_name(object_id)?;
+                let sql = format!("drop view {}.{};", schema, name);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Function => {
-                let sql = format!("drop function {};", object.id);
+                let schema = project::get_schema(object_id)?;
+                let name = project::get_name(object_id)?;
+                let sql = format!("drop function {}.{};", schema, name);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Constraint => {
-                let schema = object.schema()?;
-                let table = object.table()?;
-                let constraint_name = object.name()?;
-                let table_id = format!("{}.{}", schema, table);
-                let drop_constraint_sql = format!("alter table {table_id} drop constraint {constraint_name};",
-                    table_id=table_id,
-                    constraint_name=constraint_name
+                let schema = project::get_schema(object_id)?;
+                let table = project::get_table(object_id)?;
+                let name = project::get_name(object_id)?;
+                let drop_constraint_sql = format!("alter table {}.{} drop constraint {};",
+                    schema,
+                    table,
+                    name,
                 );
 
                 pg_client.batch_execute(&drop_constraint_sql)?;
             },
             DatabaseObjectType::Role => {
                 let pgfine_role = utils::get_role_name()?;
+                let drop_role_name = project::get_name(object_id)?;
                 let sql = format!("
                     grant {drop_role_name} to {pgfine_role};
                     reassign owned by {drop_role_name} to {pgfine_role};
                     drop owned by {drop_role_name};
                     drop role {drop_role_name};",
-                    drop_role_name=object.id,
+                    drop_role_name=drop_role_name,
                     pgfine_role=pgfine_role,
                 );
                 
@@ -262,45 +275,48 @@ fn drop_object(
                 return Ok(());
             },
             DatabaseObjectType::Trigger => {
-                let schema = object.schema()?;
-                let table = object.table()?;
-                let trigger_name = object.name()?;
-                let table_id = format!("{}.{}", schema, table);
-                let drop_trigger_sql = format!("drop trigger {trigger_name} ON {table_id};",
-                    table_id=table_id,
-                    trigger_name=trigger_name
+                let schema = project::get_schema(object_id)?;
+                let table = project::get_table(object_id)?;
+                let name = project::get_name(object_id)?;
+                let drop_trigger_sql = format!("drop trigger {} ON {}.{};",
+                    name,
+                    schema,
+                    table,
                 );
 
                 pg_client.batch_execute(&drop_trigger_sql)?;
             },
             DatabaseObjectType::Policy => {
-                let schema = object.schema()?;
-                let table = object.table()?;
-                let policy_name = object.name()?;
-                let table_id = format!("{}.{}", schema, table);
-                let drop_policy_sql = format!("drop policy {policy_name} ON {table_id};",
-                    table_id=table_id,
-                    policy_name=policy_name
+                let schema = project::get_schema(object_id)?;
+                let table = project::get_table(object_id)?;
+                let name = project::get_name(object_id)?;
+                let drop_policy_sql = format!("drop policy {} ON {}.{};",
+                    name,
+                    schema,
+                    table,
                 );
 
                 pg_client.batch_execute(&drop_policy_sql)?;
             },
             DatabaseObjectType::Schema => {
-                let sql = format!("drop schema {};", object.id);
+                let name = project::get_name(object_id)?;
+                let sql = format!("drop schema {};", name);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Extension => {
-                let sql = format!("drop extension {};", object.id);
+                let name = project::get_name(object_id)?;
+                let sql = format!("drop extension {};", name);
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Type => {
-                let sql = format!("drop type {};", object.id);
+                let name = project::get_name(object_id)?;
+                let sql = format!("drop type {};", name);
                 pg_client.batch_execute(&sql)?;
             },
         };
     }
 
-    delete_pgfine_object(pg_client, &object.id)?;
+    delete_pgfine_object(pg_client, &object_id)?;
     return Ok(());
 }
 
@@ -320,6 +336,9 @@ fn drop_object_with_deps(
         bail!("drop_object_with_deps: cycle detected {:?}", object.id);
     }
     visited.insert(object.id.clone());
+
+
+    // FIXME first attemt to drop here without deps
 
     for dep_id in object.required_by.iter() {
         if let Some(dep) = objects.get(dep_id) {
@@ -349,7 +368,7 @@ fn drop_object_with_deps(
         }
     }
 
-    drop_object(pg_client, &object)?;
+    drop_object(pg_client, &object.id)?;
     dropped.insert(object.id.clone());
     return Ok(());
 }
@@ -357,19 +376,20 @@ fn drop_object_with_deps(
 
 fn force_drop_role_if_exists(
     pg_client: &mut postgres::Client,
-    object: &DatabaseObject
+    object_id: &str
 ) -> anyhow::Result<()> {
-    if object.object_type != DatabaseObjectType::Role {
+    let object_type = project::get_object_type(object_id)?;
+    if object_type != DatabaseObjectType::Role {
         panic!("force_drop_role: object.object_type != DatabaseObjectType::Role");
     }
 
-    let exists = exists_object(pg_client, object)?;
+    let exists = exists_object(pg_client, object_id)?;
     if !exists {
         return Ok(());
     }
 
-    println!("force drop role {:?}", object.id);
-
+    println!("force drop role {:?}", object_id);
+    let drop_role_name = project::get_name(object_id)?;
     let role_name = utils::get_role_name()?;
     
     let sql = format!(
@@ -379,7 +399,7 @@ fn force_drop_role_if_exists(
         drop owned by {drop_role_name} cascade;
         drop role {drop_role_name};
         ", 
-        drop_role_name=object.id,
+        drop_role_name=drop_role_name,
         role_name=role_name,
     );
 
@@ -407,16 +427,16 @@ fn create_if_missing(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject,
 ) -> anyhow::Result<()> {
-    let exists = exists_object(pg_client, object)?;
+    let exists = exists_object(pg_client, &object.id)?;
     if exists {
         let pgfine_exists = exists_pgfine_object(pg_client, &object.id)?;
         if !pgfine_exists {
-            println!("create missing pgfine_objects record {:?} {:?}", object.object_type, object.id);
+            println!("create missing pgfine_objects record {:?}", object.id);
             update_pgfine_object(pg_client, &object)?;
         }
         return Ok(());
     }
-    println!("create {:?} {:?}", object.object_type, object.id);
+    println!("create {:?}", object.id);
     pg_client.batch_execute(&object.script)?;
     update_pgfine_object(pg_client, &object)?;
     return Ok(());
@@ -472,7 +492,6 @@ fn create_pgfine_tables(
     let pgfine_objects_sql = "
         create table if not exists pgfine_objects (
             po_id text primary key,
-            po_type text,
             po_md5 text,
             po_script text,
             po_path text,
@@ -509,30 +528,6 @@ fn select_db_objects(
 }
 
 
-fn collect_required_by(
-    set: &mut HashSet<String>,
-    objects: &HashMap<String, DatabaseObject>
-) {
-    let mut ll = LinkedList::from_iter(set.clone());
-    while ll.len() > 0 {
-        let object_id = ll.pop_front().unwrap();
-        let object_opt = objects.get(&object_id);
-
-        if let Some(object) = object_opt {
-            for req_id in object.required_by.iter() {
-                if !set.contains(req_id) {
-                    ll.push_back(req_id.clone());
-                }
-            }
-        }
-
-        if !set.contains(&object_id) {
-            set.insert(object_id.clone());
-        }
-    }
-}
-
-
 fn update_objects(
     pg_client: &mut postgres::Client,
     database_project: &DatabaseProject
@@ -544,8 +539,9 @@ fn update_objects(
     let mut dirty_tables_set: HashSet<String> = HashSet::new();
 
     for (db_object_id, db_object) in db_objects.iter() {
+        let object_type = db_object.object_type()?;
         if !database_project.objects.contains_key(db_object_id) {
-            if db_object.object_type == DatabaseObjectType::Table {
+            if object_type == DatabaseObjectType::Table {
                 dirty_tables_set.insert(db_object_id.clone());
             } else {
                 drop_set.insert(db_object_id.clone());
@@ -553,7 +549,7 @@ fn update_objects(
         } else {
             let p_object = &database_project.objects[db_object_id];
             if p_object.md5 != db_object.md5 {
-                match db_object.object_type {
+                match object_type {
                     DatabaseObjectType::Table => {
                         dirty_tables_set.insert(db_object_id.clone());
                     },
@@ -583,14 +579,27 @@ fn update_objects(
     }
 
 
-    // drop p_objects which are missing in pgfine_objects and still exist in database (except schemas)
+    // drop p_objects which are missing in pgfine_objects and still exist in database (except schemas, tables, extensions)
     for (p_object_id, p_object) in database_project.objects.iter() {
         if db_objects.contains_key(p_object_id) {
             continue;
         }
 
-        let exists = exists_object(pg_client, p_object)?;
-        if exists && p_object.object_type != DatabaseObjectType::Schema {
+        let exists = exists_object(pg_client, p_object_id)?;
+        if !exists {
+            continue;
+        }
+
+        let object_type = p_object.object_type()?;
+        if object_type == DatabaseObjectType::Schema {
+            println!("schema is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+        } else if object_type == DatabaseObjectType::Table {
+            println!("table is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+        } else if object_type == DatabaseObjectType::Extension {
+            println!("extension is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+        } else if object_type == DatabaseObjectType::Type {
+            println!("type is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+        } else {
             drop_set.insert(p_object_id.clone());
         }
     }
@@ -601,7 +610,7 @@ fn update_objects(
     dirty_tables_sorted.sort();
     for dirty_table_id in dirty_tables_sorted {
         let object = &db_objects[dirty_table_id];
-        let exists = exists_object(pg_client, object)?;
+        let exists = exists_object(pg_client, &object.id)?;
         let deleted = !database_project.objects.contains_key(dirty_table_id);
         if exists && deleted {
             bail!("table was deleted from project, but it still exists in database, \
@@ -617,10 +626,6 @@ fn update_objects(
         
         // else table will be created in later step
     }
-
-
-
-    collect_required_by(&mut drop_set, &db_objects);
 
     let mut dropped: HashSet<String> = HashSet::new();
     let mut drop_list = Vec::from_iter(drop_set.clone());
@@ -653,7 +658,7 @@ fn update_objects(
             );
 
             if drop_result.is_err() {
-                println!("failed to drop {:?} {:?}", object.object_type, object.id);
+                println!("failed to drop {:?}", object.id);
                 last_error = drop_result.err();
             }
         }
@@ -676,12 +681,13 @@ fn update_objects(
     let create_order = database_project.get_create_order()
         .context("update_objects error: could not get create order")?;
 
+
     for object_id in create_order.iter() {
         let object = database_project.objects.get(object_id).unwrap();
         create_if_missing(pg_client, &object)
-            .context(format!("update_objects error: could not create {:?} {:?}", object.object_type, object.id))?;
+            .context(format!("update_objects error: could not create {:?}", object.id))?;
     }
-    
+
     return Ok(());
 }
 
@@ -806,15 +812,17 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
         Ok(mut pg_client) => {
             let db_objects = select_db_objects(&mut pg_client)?;
             for (db_object_id, db_object) in db_objects.iter() {
-                if db_object.object_type == DatabaseObjectType::Role {
-                    force_drop_role_if_exists(&mut pg_client, db_object)
+                let object_type = db_object.object_type()?;
+                if object_type == DatabaseObjectType::Role {
+                    force_drop_role_if_exists(&mut pg_client, db_object_id)
                         .context(format!("drop error: failed to drop role, drop it manually or remove it from pgfine_objects table {:?}", db_object_id))?;
                 }
             }
         
             for (p_object_id, p_object) in database_project.objects.iter() {
-                if p_object.object_type == DatabaseObjectType::Role {
-                    force_drop_role_if_exists(&mut pg_client, p_object)
+                let object_type = p_object.object_type()?;
+                if object_type == DatabaseObjectType::Role {
+                    force_drop_role_if_exists(&mut pg_client, p_object_id)
                         .context(format!("drop error: failed to drop role, drop it manually or remove it from the project {:?}", p_object_id))?;
                 }
             }
@@ -842,8 +850,9 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
 
     // check existing roles
     for (p_object_id, p_object) in database_project.objects.iter() {
-        if p_object.object_type == DatabaseObjectType::Role {
-            let role_exists = exists_object(&mut pg_admin_client, p_object)
+        let object_type = p_object.object_type()?;
+        if object_type == DatabaseObjectType::Role {
+            let role_exists = exists_object(&mut pg_admin_client, p_object_id)
                 .context(format!("drop error: failed to check if role exists {:?}", p_object_id))?;
             if role_exists {
                 println!("role still exists after executing all drop scripts, drop it manually or remove it from the project {:?}", p_object_id);

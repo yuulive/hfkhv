@@ -105,7 +105,6 @@ Two extra tables will be created:
     ```sql
         create table if not exists pgfine_objects (
             po_id text primary key,
-            po_type text,
             po_md5 text,
             po_script text,
             po_path text,
@@ -288,7 +287,6 @@ add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 # Assumptions
 
 - Passwords, database names and roles can only have alphanumeric characters and underscores.
-- Each script filename must uniquely identify correspoinding database object. This means that it is not possible to have both `pgcrypto` extension and `pgcrypto` schema in the project.
 - Filename information is used to track dependencies between objects using simple whole word search, assuming default `public` schema.
 - Triggers, constraints and policies are assumed to not be required by other objects (always safe to drop).
 - Each new file in `./pgfine/migrations/` is assumed to be increasing in alphabetical order.
@@ -308,7 +306,20 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [and more...](https://wiki.postgresql.org/wiki/Change_management_tools_and_techniques)
 
 
-# Post 1.0.0 plan
+# Breaking changes
+
+## 1 -> 2
+
+- object type is now part of object id.
+
+Migration steps
+- make your database up to date. (by running `pgfine migrate`)
+- update `pgfine`
+- drop tables `pgfine_objects` and `pgfine_migrations`
+- run `pgfine migrate`
+
+
+# Post 2.0.0 plan
 
 - [ ] validate if object is self referenced
 - [ ] validate table schema when hash has changed (by creating separate DB? and comparing?) before applying all other updates
@@ -324,8 +335,7 @@ At the current stage pgfine is not the best thing in the world. You might also w
 - [ ] support stable rust
 - [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
-- [ ] object id includes type (according to dirrectory)
-- [ ] alter function -> drop table? -> drop function -> create function -> create table
+- [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
 - [ ] attempt do to drop without deps
 
