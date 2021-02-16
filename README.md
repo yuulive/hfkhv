@@ -333,7 +333,6 @@ Migration steps
 - [x] make execute order deterministic
 - [ ] ignore comments in scripts when resolving dependencies
 - [ ] support stable rust
-- [ ] support for initial data (can be achieved by creating custom functions to initialize the data)
 - [ ] generate project from existing database
 - [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
