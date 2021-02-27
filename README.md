@@ -337,6 +337,7 @@ Migration steps
 - [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
 - [ ] attempt do to drop without deps
+- [ ] permissions in separate dir, allways revoke all and apply again for all roles in the project
 
 
 
