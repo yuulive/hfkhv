@@ -359,7 +359,7 @@ Migration steps
 - [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
 - [x] attempt do to drop without deps
-
+- [ ] drop all fucntions having the same name
 
 
 
