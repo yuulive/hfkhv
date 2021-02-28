@@ -393,6 +393,28 @@ fn calc_required_by_for_schema(
     return Ok(result);
 }
 
+/*  role objects should only depend on other role objects */
+fn calc_required_by_for_role(
+    object_id: &str,
+    objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
+) -> anyhow::Result<HashSet<String>> {
+    let mut result = HashSet::new();
+    let role_name = get_name(object_id)?;
+    for (required_by_object_id, (object_type, _, script)) in objects_info {
+
+        if *object_type != DatabaseObjectType::Role {
+            continue;
+        }
+        
+        let contains = utils::contains_whole_word_ci(&script, &role_name);
+        if contains {
+            result.insert(required_by_object_id.clone());
+        }
+    }
+
+    return Ok(result);
+}
+
 fn calc_required_by_for_object(
     object_id: &str,
     objects_info: &HashMap<String, (DatabaseObjectType, PathBuf, String)>,
@@ -402,6 +424,8 @@ fn calc_required_by_for_object(
     
     if object_type == DatabaseObjectType::Schema {
         return calc_required_by_for_schema(object_id, objects_info);
+    } else if object_type == DatabaseObjectType::Role {
+        return calc_required_by_for_role(object_id, objects_info);
     }
     
     let mut result = HashSet::new();
@@ -528,8 +552,20 @@ fn calc_create_order(objects: &HashMap<String, DatabaseObject>) -> anyhow::Resul
     let mut dependencies_vec: Vec<String> = vec![];
     let mut dependencies_set: HashSet<String> = HashSet::new();
 
-    let mut objects_sorted: Vec<&String> = Vec::from_iter(objects.keys());
+    let mut objects_sorted: Vec<&String> = Vec::new();
+    let mut roles_sorted: Vec<&String> = Vec::new();
+
+    for object_id in objects.keys() {
+        let object_type = get_object_type(object_id)?;
+        if object_type == DatabaseObjectType::Role {
+            roles_sorted.push(object_id);
+        } else {
+            objects_sorted.push(object_id);
+        }
+    }
     objects_sorted.sort();
+    roles_sorted.sort();
+    objects_sorted.extend(roles_sorted);
 
     for object_id in objects_sorted {
         let mut visited: HashSet<String> = HashSet::new();

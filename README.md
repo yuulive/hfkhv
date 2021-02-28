@@ -190,7 +190,7 @@ Database objects are:
 - constraints
 - policies
 - functions
-- roles 
+- roles
 - schemas
 - extensions
 - types
@@ -256,6 +256,28 @@ alter table table1
 add constraint t0_id_fk foreign key (t0_id) references table1 (id);
 ```
 
+## Policies
+
+Example `./pgfine/policies/public.table1.policy1.sql`:
+```sql
+create policy policy1
+on public.table1;
+```
+
+Policy script should not target specific role. Role assignments should be done in role scripts by altering given policy.
+
+
+## Roles
+
+Example `./pgfine/roles/role0.sql`:
+```sql
+create role {pgfine_role_prefix}role0;
+grant usage on schema schema0 to {pgfine_role_prefix}role0;
+```
+
+All permissions assignments should be done in role scripts.
+Role objects will always be dropped and newly created when executing `pgfine migrate`.
+This is to avoid default permissions assignment when other objects are recreated.
 
 # Commands
 
@@ -336,8 +358,8 @@ Migration steps
 - [ ] generate project from existing database
 - [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
-- [ ] attempt do to drop without deps
-- [ ] permissions in separate dir, allways revoke all and apply again for all roles in the project
+- [x] attempt do to drop without deps
+
 
 
 

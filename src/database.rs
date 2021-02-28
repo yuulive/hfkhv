@@ -337,8 +337,12 @@ fn drop_object_with_deps(
     }
     visited.insert(object.id.clone());
 
-
-    // FIXME first attemt to drop here without deps
+    // first attempt to drop the target without dropping dependencies
+    let drop_result = drop_object(pg_client, &object.id);
+    if drop_result.is_ok() {
+        dropped.insert(object.id.clone());
+        return Ok(());
+    }
 
     for dep_id in object.required_by.iter() {
         if let Some(dep) = objects.get(dep_id) {
@@ -540,7 +544,9 @@ fn update_objects(
 
     for (db_object_id, db_object) in db_objects.iter() {
         let object_type = db_object.object_type()?;
-        if !database_project.objects.contains_key(db_object_id) {
+        if object_type == DatabaseObjectType::Role {
+            drop_set.insert(db_object_id.clone());
+        } else if !database_project.objects.contains_key(db_object_id) {
             if object_type == DatabaseObjectType::Table {
                 dirty_tables_set.insert(db_object_id.clone());
             } else {
@@ -565,7 +571,7 @@ fn update_objects(
                         println!("type script has changed but won't be updated, to modify type you should use migrations {:?}", db_object_id);
                         delete_pgfine_object(pg_client, &db_object_id)?;
                     },
-                    DatabaseObjectType::Role |
+                    DatabaseObjectType::Role => unreachable!(),
                     DatabaseObjectType::Trigger |
                     DatabaseObjectType::Constraint |
                     DatabaseObjectType::Function |
