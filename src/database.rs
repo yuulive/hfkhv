@@ -242,9 +242,32 @@ fn drop_object(
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Function => {
-                let schema = project::get_schema(object_id)?;
-                let name = project::get_name(object_id)?;
-                let sql = format!("drop function {}.{};", schema, name);
+                let sql = format!("
+                    do language plpgsql
+                    $$
+                    begin
+                        if exists (
+                            select 1
+                            from pg_proc p
+                            join pg_namespace n on n.oid = p.pronamespace
+                            where lower('function' || '.' || n.nspname || '.' || p.proname) = lower('{}')
+                        ) then
+                            execute(
+                                select string_agg(
+                                    format('drop function %s;', p.oid::regprocedure),
+                                    E'\n'
+                                )
+                                from pg_proc p
+                                join pg_namespace n on n.oid = p.pronamespace
+                                where lower('function' || '.' || n.nspname || '.' || p.proname) = lower('{}')
+                            );
+                        end if;
+                    end
+                    $$;",
+                    object_id,
+                    object_id,
+                );
+
                 pg_client.batch_execute(&sql)?;
             },
             DatabaseObjectType::Constraint => {
@@ -278,7 +301,7 @@ fn drop_object(
                 let schema = project::get_schema(object_id)?;
                 let table = project::get_table(object_id)?;
                 let name = project::get_name(object_id)?;
-                let drop_trigger_sql = format!("drop trigger {} ON {}.{};",
+                let drop_trigger_sql = format!("drop trigger {} on {}.{};",
                     name,
                     schema,
                     table,
@@ -290,7 +313,7 @@ fn drop_object(
                 let schema = project::get_schema(object_id)?;
                 let table = project::get_table(object_id)?;
                 let name = project::get_name(object_id)?;
-                let drop_policy_sql = format!("drop policy {} ON {}.{};",
+                let drop_policy_sql = format!("drop policy {} on {}.{};",
                     name,
                     schema,
                     table,

@@ -248,6 +248,18 @@ join table1 t1 on t1.id = t0.id
 -- create indexes maybe
 ```
 
+## Functions
+
+During update all overidden functions will be dropped (if modified) and created again.
+
+
+Some default permissions might be applied on a function when dropping and creating it.
+In the function script you might want to add extra statement to alter default privileges:
+```sql
+revoke execute on function some_function from public;
+```
+
+
 ## Constraints
 
 Example `./pgfine/constraints/public.table1.t0_id_fk.sql`:
@@ -359,7 +371,7 @@ Migration steps
 - [ ] solution for for functions required by tables?
 - [ ] user defined drop scripts
 - [x] attempt do to drop without deps
-- [ ] drop all fucntions having the same name
+- [x] drop all fucntions having the same name
 
 
 
