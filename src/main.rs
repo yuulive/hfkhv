@@ -11,11 +11,11 @@ fn main() -> anyhow::Result<()> {
     let about = format!("{}
 
 ENVIRONMENT VARIABLES:
-    PGFINE_DIR                      project location
-    PGFINE_CONNECTION_STRING        connection string for target database
-    PGFINE_ADMIN_CONNECTION_STRING  connection string for admin database
-    PGFINE_ROOT_CERT                path to root certificate to verify server's certificate
-    PGFINE_ROLE_PREFIX              role prefix to make them unique per environment
+    WO_DIR                      project location
+    WO_CONNECTION_STRING        connection string for target database
+    WO_ADMIN_CONNECTION_STRING  connection string for admin database
+    WO_ROOT_CERT                path to root certificate to verify server's certificate
+    WO_ROLE_PREFIX              role prefix to make them unique per environment
 ",
         clap::crate_description!(),        
     );
@@ -27,7 +27,7 @@ ENVIRONMENT VARIABLES:
     .author(clap::crate_authors!("\n"))
     .about(about_str)
     .subcommand(clap::App::new("init")
-        .about("initialize new pgfine project"))
+        .about("initialize new wo project"))
     .subcommand(clap::App::new("migrate")
         .about("update database"))
     .subcommand(clap::App::new("drop")

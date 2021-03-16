@@ -60,7 +60,7 @@ fn validate_admin_script_param(p: &str) -> anyhow::Result<()> {
 }
 
 pub fn get_password() -> anyhow::Result<Option<String>> {
-    let connection_string = read_env_var("PGFINE_CONNECTION_STRING")?;
+    let connection_string = read_env_var("WO_CONNECTION_STRING")?;
     let pg_config = connection_string.parse::<postgres::Config>()?;
     let password_result = pg_config.get_password();
     match password_result {
@@ -77,7 +77,7 @@ pub fn get_password() -> anyhow::Result<Option<String>> {
 }
 
 pub fn get_database_name() -> anyhow::Result<String> {
-    let connection_string = read_env_var("PGFINE_CONNECTION_STRING")?;
+    let connection_string = read_env_var("WO_CONNECTION_STRING")?;
     let pg_config = connection_string.parse::<postgres::Config>()?;
     let database_name_result = pg_config.get_dbname();
     match database_name_result {
@@ -86,13 +86,13 @@ pub fn get_database_name() -> anyhow::Result<String> {
             return Ok(database_name.into());
         }
         None => {
-            bail!("could not read the dbname parameter from connection string PGFINE_CONNECTION_STRING");
+            bail!("could not read the dbname parameter from connection string WO_CONNECTION_STRING");
         }
     }
 }
 
 pub fn get_role_name() -> anyhow::Result<String> {
-    let connection_string = read_env_var("PGFINE_CONNECTION_STRING")?;
+    let connection_string = read_env_var("WO_CONNECTION_STRING")?;
     let pg_config = connection_string.parse::<postgres::Config>()?;
     let role_name_result = pg_config.get_user();
     match role_name_result {
@@ -101,7 +101,7 @@ pub fn get_role_name() -> anyhow::Result<String> {
             return Ok(role_name.into());
         }
         None => {
-            bail!("could not get user parameter from connection string PGFINE_CONNECTION_STRING");
+            bail!("could not get user parameter from connection string WO_CONNECTION_STRING");
         }
     }
 }
@@ -144,12 +144,12 @@ pub fn contains_whole_word_ci(text: &str, search_term: &str) -> bool {
 }
 
 pub fn validate_environment() -> anyhow::Result<()> {
-    let err_msg = "all pgfine variables are mandatory to avoid mixed environments";
-    read_env_var("PGFINE_CONNECTION_STRING").context(err_msg)?;
-    read_env_var("PGFINE_ADMIN_CONNECTION_STRING").context(err_msg)?;
-    read_env_var("PGFINE_DIR").context(err_msg)?;
-    read_env_var("PGFINE_ROLE_PREFIX").context(err_msg)?;
-    read_env_var("PGFINE_ROOT_CERT").context(err_msg)?;
+    let err_msg = "all wo variables are mandatory to avoid mixed environments";
+    read_env_var("WO_CONNECTION_STRING").context(err_msg)?;
+    read_env_var("WO_ADMIN_CONNECTION_STRING").context(err_msg)?;
+    read_env_var("WO_DIR").context(err_msg)?;
+    read_env_var("WO_ROLE_PREFIX").context(err_msg)?;
+    read_env_var("WO_ROOT_CERT").context(err_msg)?;
     return Ok(());
 }
 

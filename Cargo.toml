@@ -1,12 +1,12 @@
 [package]
-name = "pgfine"
-description = "Yet another database migration tool for postgres."
+name = "wo"
+description = "Wo is yet another database migration tool for postgres."
 version = "2.2.1"
 authors = ["Marius Kavaliauskas <mariuskava@gmail.com>"]
 edition = "2018"
 license = "MIT"
 keywords = ["postgres", "postgresql", "migration", "database", "versioning"]
-repository = "https://gitlab.com/mrsk/pgfine"
+repository = "https://github.com/yuulive/wo"
 categories = ["database", "command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

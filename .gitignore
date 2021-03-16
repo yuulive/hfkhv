@@ -1,5 +1,6 @@
 /target
 
-/pgfine
+/wo
 /env.sh
 /env-*.sh
+Cargo.lock

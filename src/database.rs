@@ -21,7 +21,7 @@ use crate::utils;
 
 fn get_pg_client_from_connection_string(connection_string: &str) -> anyhow::Result<postgres::Client> {
     
-    let root_cert_path = utils::read_env_var("PGFINE_ROOT_CERT")?;
+    let root_cert_path = utils::read_env_var("WO_ROOT_CERT")?;
     if root_cert_path == "" {
         let pg_client = postgres::Client::connect(&connection_string, postgres::NoTls)
             .context("failed to connect to db using no TLS")?;
@@ -76,28 +76,28 @@ fn get_pg_client_from_connection_string(connection_string: &str) -> anyhow::Resu
 }
 
 fn get_admin_pg_client() -> anyhow::Result<postgres::Client> {
-    let admin_connection_string = utils::read_env_var("PGFINE_ADMIN_CONNECTION_STRING")
-        .context("get_admin_pg_client error: failed to get connection string from env PGFINE_ADMIN_CONNECTION_STRING")?;
+    let admin_connection_string = utils::read_env_var("WO_ADMIN_CONNECTION_STRING")
+        .context("get_admin_pg_client error: failed to get connection string from env WO_ADMIN_CONNECTION_STRING")?;
     let admin_pg_client = get_pg_client_from_connection_string(&admin_connection_string)
-        .context("get_admin_pg_client error: failed to connect to database using PGFINE_ADMIN_CONNECTION_STRING")?;
+        .context("get_admin_pg_client error: failed to connect to database using WO_ADMIN_CONNECTION_STRING")?;
     return Ok(admin_pg_client);
 }
 
 fn get_pg_client() -> anyhow::Result<postgres::Client> {
-    let connection_string = utils::read_env_var("PGFINE_CONNECTION_STRING")
-        .context("get_admin_pg_client error: failed to get connection string from env PGFINE_CONNECTION_STRING")?;
+    let connection_string = utils::read_env_var("WO_CONNECTION_STRING")
+        .context("get_admin_pg_client error: failed to get connection string from env WO_CONNECTION_STRING")?;
     let pg_client = get_pg_client_from_connection_string(&connection_string)
-        .context("get_admin_pg_client error: failed to connect to database using PGFINE_CONNECTION_STRING")?;
+        .context("get_admin_pg_client error: failed to connect to database using WO_CONNECTION_STRING")?;
     return Ok(pg_client);
 }
 
 
-fn update_pgfine_object(
+fn update_wo_object(
     pg_client: &mut postgres::Client,
     object: &DatabaseObject
 ) -> anyhow::Result<()> {
     let sql = "
-        insert into pgfine_objects (
+        insert into wo_objects (
             po_id,
             po_md5,
             po_script,
@@ -131,13 +131,13 @@ fn update_pgfine_object(
     return Ok(());
 }
 
-fn delete_pgfine_object(
+fn delete_wo_object(
     pg_client: &mut postgres::Client,
     object_id: &str
 ) -> anyhow::Result<()> {
-    let sql = "delete from pgfine_objects where lower(po_id) = lower($1)";
+    let sql = "delete from wo_objects where lower(po_id) = lower($1)";
     pg_client.execute(sql, &[&object_id])
-        .context(format!("delete_pgfine_object failed {:?}", object_id))?;
+        .context(format!("delete_wo_object failed {:?}", object_id))?;
     return Ok(());
 }
 
@@ -283,15 +283,15 @@ fn drop_object(
                 pg_client.batch_execute(&drop_constraint_sql)?;
             },
             DatabaseObjectType::Role => {
-                let pgfine_role = utils::get_role_name()?;
+                let wo_role = utils::get_role_name()?;
                 let drop_role_name = project::get_name(object_id)?;
                 let sql = format!("
-                    grant {drop_role_name} to {pgfine_role};
-                    reassign owned by {drop_role_name} to {pgfine_role};
+                    grant {drop_role_name} to {wo_role};
+                    reassign owned by {drop_role_name} to {wo_role};
                     drop owned by {drop_role_name};
                     drop role {drop_role_name};",
                     drop_role_name=drop_role_name,
-                    pgfine_role=pgfine_role,
+                    wo_role=wo_role,
                 );
                 
                 pg_client.batch_execute(&sql)?;
@@ -339,7 +339,7 @@ fn drop_object(
         };
     }
 
-    delete_pgfine_object(pg_client, &object_id)?;
+    delete_wo_object(pg_client, &object_id)?;
     return Ok(());
 }
 
@@ -433,14 +433,14 @@ fn force_drop_role_if_exists(
     return Ok(());
 }
 
-fn exists_pgfine_object(
+fn exists_wo_object(
     pg_client: &mut postgres::Client,
     object_id: &str,
 ) -> anyhow::Result<bool> {
     let sql = "
         select exists (
             select 1
-            from pgfine_objects
+            from wo_objects
             where po_id = $1
         );";
     
@@ -455,17 +455,17 @@ fn create_if_missing(
 ) -> anyhow::Result<()> {
     let exists = exists_object(pg_client, &object.id)?;
     if exists {
-        let pgfine_exists = exists_pgfine_object(pg_client, &object.id)?;
-        if !pgfine_exists {
-            println!("create missing pgfine_objects record {:?}", object.id);
+        let wo_exists = exists_wo_object(pg_client, &object.id)?;
+        if !wo_exists {
+            println!("create missing wo_objects record {:?}", object.id);
         }
         // always update because required_by could have changed
-        update_pgfine_object(pg_client, &object)?;
+        update_wo_object(pg_client, &object)?;
         return Ok(());
     }
     println!("create {:?}", object.id);
     pg_client.batch_execute(&object.script)?;
-    update_pgfine_object(pg_client, &object)?;
+    update_wo_object(pg_client, &object)?;
     return Ok(());
 }
 
@@ -513,11 +513,11 @@ fn create_database(
     return Ok(());
 }
 
-fn create_pgfine_tables(
+fn create_wo_tables(
     pg_client: &mut postgres::Client
 ) -> anyhow::Result<()> {
-    let pgfine_objects_sql = "
-        create table if not exists pgfine_objects (
+    let wo_objects_sql = "
+        create table if not exists wo_objects (
             po_id text primary key,
             po_md5 text,
             po_script text,
@@ -526,15 +526,15 @@ fn create_pgfine_tables(
             po_required_by text[]
         );";
 
-    pg_client.batch_execute(pgfine_objects_sql)
-        .context("failed to create pgfine_objects table")?;
+    pg_client.batch_execute(wo_objects_sql)
+        .context("failed to create wo_objects table")?;
 
-    let pgfine_version_sql = "
-        create table if not exists pgfine_migrations (
+    let wo_version_sql = "
+        create table if not exists wo_migrations (
             pm_id text primary key
         );";
     
-    pg_client.batch_execute(pgfine_version_sql)?;
+    pg_client.batch_execute(wo_version_sql)?;
 
     return Ok(());
 }
@@ -544,11 +544,11 @@ fn select_db_objects(
     pg_client: &mut postgres::Client
 ) -> anyhow::Result<HashMap<String, DatabaseObject>> {
     let mut result = HashMap::new();
-    let sql = "select * from pgfine_objects;";
+    let sql = "select * from wo_objects;";
     let rows = pg_client.query(sql, &[])?;
     for row in rows {
         let object = DatabaseObject::from_db_row(&row)
-            .context("failed to parse pgfine_objects row")?;
+            .context("failed to parse wo_objects row")?;
         result.insert(object.id.clone(), object);
     }
     return Ok(result);
@@ -584,15 +584,15 @@ fn update_objects(
                     },
                     DatabaseObjectType::Schema => {
                         println!("schema script has changed but won't be updated, to modify schema you should use migrations {:?}", db_object_id);
-                        delete_pgfine_object(pg_client, &db_object_id)?;
+                        delete_wo_object(pg_client, &db_object_id)?;
                     },
                     DatabaseObjectType::Extension => {
                         println!("extension script has changed but won't be updated, to modify extesnion you should use migrations {:?}", db_object_id);
-                        delete_pgfine_object(pg_client, &db_object_id)?;
+                        delete_wo_object(pg_client, &db_object_id)?;
                     },
                     DatabaseObjectType::Type => {
                         println!("type script has changed but won't be updated, to modify type you should use migrations {:?}", db_object_id);
-                        delete_pgfine_object(pg_client, &db_object_id)?;
+                        delete_wo_object(pg_client, &db_object_id)?;
                     },
                     DatabaseObjectType::Role => unreachable!(),
                     DatabaseObjectType::Trigger |
@@ -608,7 +608,7 @@ fn update_objects(
     }
 
 
-    // drop p_objects which are missing in pgfine_objects and still exist in database (except schemas, tables, extensions)
+    // drop p_objects which are missing in wo_objects and still exist in database (except schemas, tables, extensions)
     for (p_object_id, p_object) in database_project.objects.iter() {
         if db_objects.contains_key(p_object_id) {
             continue;
@@ -621,13 +621,13 @@ fn update_objects(
 
         let object_type = p_object.object_type()?;
         if object_type == DatabaseObjectType::Schema {
-            println!("schema is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+            println!("schema is missing in wo_objects but exists in database it will be left as it is {:?}", p_object_id);
         } else if object_type == DatabaseObjectType::Table {
-            println!("table is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+            println!("table is missing in wo_objects but exists in database it will be left as it is {:?}", p_object_id);
         } else if object_type == DatabaseObjectType::Extension {
-            println!("extension is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+            println!("extension is missing in wo_objects but exists in database it will be left as it is {:?}", p_object_id);
         } else if object_type == DatabaseObjectType::Type {
-            println!("type is missing in pgfine_objects but exists in database it will be left as it is {:?}", p_object_id);
+            println!("type is missing in wo_objects but exists in database it will be left as it is {:?}", p_object_id);
         } else {
             drop_set.insert(p_object_id.clone());
         }
@@ -645,12 +645,12 @@ fn update_objects(
             bail!("table was deleted from project, but it still exists in database, \
             it should be dropped manually or using migrations scripts {:?}", dirty_table_id);
         } else if (!exists) && deleted {
-            println!("deleting pgfine_objects record for table {:?}", dirty_table_id);
-            delete_pgfine_object(pg_client, dirty_table_id)?;
+            println!("deleting wo_objects record for table {:?}", dirty_table_id);
+            delete_wo_object(pg_client, dirty_table_id)?;
         } else if exists && (!deleted) {
-            println!("table script was modified, overwriting pgfine_objects record {:?}", dirty_table_id);
+            println!("table script was modified, overwriting wo_objects record {:?}", dirty_table_id);
             let p_object = &database_project.objects[dirty_table_id];
-            update_pgfine_object(pg_client, &p_object)?;
+            update_wo_object(pg_client, &p_object)?;
         }
         
         // else table will be created in later step
@@ -672,8 +672,8 @@ fn update_objects(
             } else if database_project.objects.contains_key(&drop_object_id) {
                 object = &database_project.objects[&drop_object_id];
             } else {
-                println!("failed to drop, missing pgfine_objects {:?}", drop_object_id);
-                last_error = Some(anyhow!("failed to drop, missing pgfine_objects {:?}", drop_object_id));
+                println!("failed to drop, missing wo_objects {:?}", drop_object_id);
+                last_error = Some(anyhow!("failed to drop, missing wo_objects {:?}", drop_object_id));
                 continue;
             }
             
@@ -720,12 +720,12 @@ fn update_objects(
     return Ok(());
 }
 
-fn insert_pgfine_migration(
+fn insert_wo_migration(
     pg_client: &mut postgres::Client,
     migration: &str
 ) -> anyhow::Result<()> {
     let sql = "
-        insert into pgfine_migrations (pm_id)
+        insert into wo_migrations (pm_id)
         select $1
         on conflict (pm_id) do nothing;";
     pg_client.execute(sql, &[&migration])?;
@@ -734,7 +734,7 @@ fn insert_pgfine_migration(
 
 
 fn get_db_last_migration(pg_client: &mut postgres::Client) -> anyhow::Result<Option<String>> {
-    let sql = "select max(pm_id) from pgfine_migrations;";
+    let sql = "select max(pm_id) from wo_migrations;";
     let row = pg_client.query_one(sql, &[])?;
     let result = row.try_get(0)?;
     return Ok(result);
@@ -751,10 +751,10 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
             println!("database was not found, will attempt to create a fresh one and create all database objects");
             
             let mut admin_pg_client = get_admin_pg_client()
-                .context("migrate error: could not connect to database neither using PGFINE_CONNECTION_STRING nor PGFINE_ADMIN_CONNECTION_STRING")?;
+                .context("migrate error: could not connect to database neither using WO_CONNECTION_STRING nor WO_ADMIN_CONNECTION_STRING")?;
 
             if exists_database(&mut admin_pg_client)? {
-                bail!("migrate error: database exists but could not get connection to it, check PGFINE_CONNECTION_STRING");
+                bail!("migrate error: database exists but could not get connection to it, check WO_CONNECTION_STRING");
             }
 
             create_database(&mut admin_pg_client, &database_project)
@@ -763,23 +763,23 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
             let mut pg_client = get_pg_client()
                 .context("migrate error: could not connect to database after it was created")?;
 
-            create_pgfine_tables(&mut pg_client)
-                .context("migrate error: could not create pgfine tables in new database")?;
+            create_wo_tables(&mut pg_client)
+                .context("migrate error: could not create wo tables in new database")?;
 
             update_objects(&mut pg_client, &database_project)
                 .context("migrate error: failed to create database objects in new database")?;
 
             if let Some((project_last_migration, _)) = project_last_migration_opt {
-                insert_pgfine_migration(&mut pg_client, &project_last_migration)
+                insert_wo_migration(&mut pg_client, &project_last_migration)
                     .context(format!("migrate error: could not insert the last migration {:?}", project_last_migration))?;
             } else {
-                insert_pgfine_migration(&mut pg_client, "")
+                insert_wo_migration(&mut pg_client, "")
                     .context("migrate error: could not insert initial migration")?;
             }
         },
         Ok(mut pg_client) => {
-            create_pgfine_tables(&mut pg_client)
-                .context("migrate error: could not create pgfine tables")?;
+            create_wo_tables(&mut pg_client)
+                .context("migrate error: could not create wo tables")?;
 
             let db_last_migration_opt = get_db_last_migration(&mut pg_client)
                 .context("migrate error: could not select the last migration")?;
@@ -795,9 +795,9 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
                             pg_client.batch_execute(&next_migration_script)
                                 .context(format!("migrate error: failed to execute migration script {:?}", next_migration_id))?;
                             
-                            insert_pgfine_migration(&mut pg_client, &next_migration_id)
+                            insert_wo_migration(&mut pg_client, &next_migration_id)
                                 .context(format!("migrate error: failed to mark migration as executed, you should insert \
-                                    migration into pgfine_migrations manually to fix possible issues {:?}", next_migration_id))?;
+                                    migration into wo_migrations manually to fix possible issues {:?}", next_migration_id))?;
 
                             db_last_migration_current = get_db_last_migration(&mut pg_client)?
                                 .ok_or(anyhow!("migrate error: failed to select latest migration after executing migration script {:?}", next_migration_id))?;
@@ -810,15 +810,15 @@ pub fn migrate(database_project: DatabaseProject) -> anyhow::Result<()> {
                         .context("migrate error: failed to update database objects")?;
                 },
                 None => {
-                    println!("database has no initial migration, last migration found in pgfine project will be marked as executed.");
+                    println!("database has no initial migration, last migration found in wo project will be marked as executed.");
                     update_objects(&mut pg_client, &database_project)
                         .context("migrate error: failed to update database objects after no initial migration was found")?;
 
                     if let Some((project_last_migration, _)) = project_last_migration_opt {
-                        insert_pgfine_migration(&mut pg_client, &project_last_migration)
+                        insert_wo_migration(&mut pg_client, &project_last_migration)
                             .context(format!("migrate error: could not insert the last migration after no initial migration was found {:?}", project_last_migration))?;
                     } else {
-                        insert_pgfine_migration(&mut pg_client, "")
+                        insert_wo_migration(&mut pg_client, "")
                             .context("migrate error: could not insert initial migration after no initial migration was found")?;
                     }
                 }
@@ -844,7 +844,7 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
                 let object_type = db_object.object_type()?;
                 if object_type == DatabaseObjectType::Role {
                     force_drop_role_if_exists(&mut pg_client, db_object_id)
-                        .context(format!("drop error: failed to drop role, drop it manually or remove it from pgfine_objects table {:?}", db_object_id))?;
+                        .context(format!("drop error: failed to drop role, drop it manually or remove it from wo_objects table {:?}", db_object_id))?;
                 }
             }
         
@@ -863,7 +863,7 @@ pub fn drop(database_project: DatabaseProject) -> anyhow::Result<()> {
             let exists = exists_database(&mut pg_admin_client)?;
             if exists {
                 return Err(err)
-                    .context("drop error: database exists but could not get connection to it, check PGFINE_CONNECTION_STRING");
+                    .context("drop error: database exists but could not get connection to it, check WO_CONNECTION_STRING");
             }
         }
     }

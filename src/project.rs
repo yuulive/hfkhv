@@ -20,14 +20,14 @@ use crate::utils;
 mod tests;
 
 fn get_project_path() -> anyhow::Result<PathBuf> {
-    let project_path_str = utils::read_env_var("PGFINE_DIR")
-        .context("get_project_path error: failed to read env variable PGFINE_DIR")?;
+    let project_path_str = utils::read_env_var("WO_DIR")
+        .context("get_project_path error: failed to read env variable WO_DIR")?;
     return Ok(PathBuf::from(project_path_str));
 }
 
 fn get_role_prefix() -> anyhow::Result<String> {
-    let role_prefix = utils::read_env_var("PGFINE_ROLE_PREFIX")
-        .context("get_role_prefix error: failed to read env variable PGFINE_ROLE_PREFIX")?;
+    let role_prefix = utils::read_env_var("WO_ROLE_PREFIX")
+        .context("get_role_prefix error: failed to read env variable WO_ROLE_PREFIX")?;
     return Ok(role_prefix);
 }
 
@@ -38,7 +38,7 @@ fn get_create_script_00() -> (String, String) {
 -- -- database_name
 -- -- role_name
 -- -- password
--- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are taken from WO_CONNECTION_STRING env variable
 -- parameters are validated to contain only alphanum cahracters and underscores
 CREATE ROLE \"{role_name}\"
 WITH
@@ -55,7 +55,7 @@ fn get_create_script_01() -> (String, String) {
 -- -- database_name
 -- -- role_name
 -- -- password
--- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are taken from WO_CONNECTION_STRING env variable
 -- parameters are validated to contain only alphanum cahracters and underscores
 CREATE DATABASE \"{database_name}\"
 WITH
@@ -77,7 +77,7 @@ fn get_drop_script_00() -> (String, String) {
 -- -- database_name
 -- -- role_name
 -- -- password
--- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are taken from WO_CONNECTION_STRING env variable
 -- parameters are validated to contain only alphanum cahracters and underscores
 DROP DATABASE IF EXISTS \"{database_name}\" WITH (FORCE);
 ".into();
@@ -91,7 +91,7 @@ fn get_drop_script_01() -> (String, String) {
 -- -- database_name
 -- -- role_name
 -- -- password
--- parameters are taken from PGFINE_CONNECTION_STRING env variable
+-- parameters are taken from WO_CONNECTION_STRING env variable
 -- parameters are validated to contain only alphanum cahracters and underscores
 DROP ROLE IF EXISTS \"{role_name}\";
 ".into();
@@ -274,7 +274,7 @@ fn prepare_script(
     script: &str,
     role_prefix: &str
 ) -> String {
-    let result = script.replace("{pgfine_role_prefix}", role_prefix);
+    let result = script.replace("{wo_role_prefix}", role_prefix);
     return result;
 }
 
